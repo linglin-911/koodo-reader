@@ -1044,6 +1044,7 @@ const createMainWin = () => {
         ...getReaderWindowChromeOptions(),
         backgroundColor: isMergeWord ? undefined : getAppBackgroundColor(),
       });
+      attachBrowserWindowDiagnostics(readerWindow, "reader-window", true);
       readerWindow.webContents.on(
         "console-message",
         (_event, level, message) => {
@@ -1077,6 +1078,7 @@ const createMainWin = () => {
         transparent: isMergeWord === "yes" ? true : false,
         backgroundColor: isMergeWord ? undefined : getAppBackgroundColor(),
       });
+      attachBrowserWindowDiagnostics(readerWindow, "reader-window", true);
       readerWindow.webContents.on(
         "console-message",
         (_event, level, message) => {
@@ -1088,7 +1090,6 @@ const createMainWin = () => {
       readerWindow.loadURL(url);
       // readerWindow.webContents.openDevTools();
     }
-    attachBrowserWindowDiagnostics(readerWindow, "reader-window", true);
     bindReaderWindowState(readerWindow);
     if (store.get("isAlwaysOnTop") === "yes") {
       readerWindow.setAlwaysOnTop(true);
