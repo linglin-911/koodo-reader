@@ -279,10 +279,10 @@
 |---|---|
 | Koodo 仓库 | `linglin-911/koodo-reader` |
 | Koodo 分支 | `diagnostics/phase1-logging` |
-| Koodo 当前 HEAD | `878a23f04a52ef97defbc0a2f88cafc9365b00b4` |
+| Koodo 功能代码基线（本文档写入前） | `878a23f04a52ef97defbc0a2f88cafc9365b00b4` |
 | Kookit 仓库 | `linglin-911/kookit` |
 | Kookit 分支 | `diagnostics/phase1-logging` |
-| Kookit 当前 HEAD | `ebb0f2822a69e19536e5e7f33e2d840e9a8a8dcf` |
+| Kookit 当前 HEAD（文档更新时核对） | `ebb0f2822a69e19536e5e7f33e2d840e9a8a8dcf` |
 | Node.js | `v26.13.0` |
 | npm | `11.20.0` |
 | Yarn | `1.22.22` |
