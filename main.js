@@ -259,15 +259,20 @@ const logRendererMemory = (webContents, label, reason) => {
   try {
     if (!webContents || webContents.isDestroyed()) return;
     const rendererPid = webContents.getOSProcessId();
+    const mainMemory = process.memoryUsage();
+    const memoryLogLevel =
+      reason === "periodic-sample" || reason === "responsive-again"
+        ? "info"
+        : "error";
     webContents
       .getProcessMemoryInfo()
       .then((memoryInfo) => {
-        log.error(
-          `[DIAG][${label}] renderer-memory reason=${reason} pid=${rendererPid} ${JSON.stringify(memoryInfo)}`
+        log[memoryLogLevel](
+          `[DIAG][${label}] renderer-memory reason=${reason} pid=${rendererPid} mainMemory=${JSON.stringify(mainMemory)} rendererMemory=${JSON.stringify(memoryInfo)}`
         );
       })
       .catch((error) => {
-        log.error(
+        log.warn(
           `[DIAG][${label}] renderer-memory-failed reason=${reason}`,
           error
         );
