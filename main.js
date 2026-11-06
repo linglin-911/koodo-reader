@@ -277,8 +277,22 @@ const logRendererMemory = (webContents, label, reason) => {
   }
 };
 
-const attachWebContentsDiagnostics = (webContents, label) => {
+const attachWebContentsDiagnostics = (
+  webContents,
+  label,
+  watchResponsiveEvents = false
+) => {
   if (!webContents || webContents.isDestroyed()) return;
+  if (watchResponsiveEvents) {
+    webContents.on("unresponsive", () => {
+      log.error(`[DIAG][${label}] renderer-unresponsive`);
+      logRendererMemory(webContents, label, "unresponsive");
+    });
+    webContents.on("responsive", () => {
+      log.warn(`[DIAG][${label}] renderer-responsive-again`);
+      logRendererMemory(webContents, label, "responsive-again");
+    });
+  }
   webContents.on("render-process-gone", (_event, details) => {
     log.error(
       `[DIAG][${label}] render-process-gone ${JSON.stringify(details || {})}`
@@ -291,22 +305,32 @@ const attachWebContentsDiagnostics = (webContents, label) => {
       // ERR_ABORTED (-3) is commonly caused by intentional navigation/reload.
       if (isMainFrame && errorCode !== -3) {
         log.error(
-          `[DIAG][${label}] did-fail-load code=${errorCode} description=${errorDescription} mainFrame=${isMainFrame} url=${validatedURL}`
+          `[DIAG][${label}] did-fail-load code=${errorCode} description=${errorDescription} mainFrame=${isMainFrame}`
         );
       }
     }
   );
   webContents.on("preload-error", (_event, preloadPath, error) => {
     log.error(
-      `[DIAG][${label}] preload-error path=${preloadPath}`,
+      `[DIAG][${label}] preload-error file=${path.basename(preloadPath || "")}`,
       error
     );
   });
 };
 
-const attachBrowserWindowDiagnostics = (browserWindow, label) => {
+const attachBrowserWindowDiagnostics = (
+  browserWindow,
+  label,
+  sampleMemoryPeriodically = false
+) => {
   if (!browserWindow || browserWindow.isDestroyed()) return;
   attachWebContentsDiagnostics(browserWindow.webContents, label);
+  if (sampleMemoryPeriodically) {
+    const memorySampleTimer = setInterval(() => {
+      logRendererMemory(browserWindow.webContents, label, "periodic-sample");
+    }, 60 * 1000);
+    browserWindow.once("closed", () => clearInterval(memorySampleTimer));
+  }
   browserWindow.on("unresponsive", () => {
     log.error(`[DIAG][${label}] renderer-unresponsive`);
     logRendererMemory(browserWindow.webContents, label, "unresponsive");
@@ -1064,7 +1088,7 @@ const createMainWin = () => {
       readerWindow.loadURL(url);
       // readerWindow.webContents.openDevTools();
     }
-    attachBrowserWindowDiagnostics(readerWindow, "reader-window");
+    attachBrowserWindowDiagnostics(readerWindow, "reader-window", true);
     bindReaderWindowState(readerWindow);
     if (store.get("isAlwaysOnTop") === "yes") {
       readerWindow.setAlwaysOnTop(true);
@@ -2029,7 +2053,7 @@ const createMainWin = () => {
     if (mainWin) {
       mainView = new WebContentsView(options);
       mainWin.contentView.addChildView(mainView);
-      attachWebContentsDiagnostics(mainView.webContents, "main-view");
+      attachWebContentsDiagnostics(mainView.webContents, "main-view", true);
       let { width, height } = mainWin.getContentBounds();
       mainView.setBounds({ x: 0, y: 0, width: width, height: height });
       mainView.webContents.loadURL(config.url);
