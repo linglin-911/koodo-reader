@@ -251,8 +251,83 @@ if (process.platform != "darwin" && process.argv.length >= 2) {
   }
 }
 log.transports.file.fileName = "debug.log";
-log.transports.file.maxSize = 1024 * 1024; // 1MB
+// Keep enough history to diagnose long-running reading sessions and crashes.
+log.transports.file.maxSize = 10 * 1024 * 1024; // 10MB
 log.initialize();
+
+const logRendererMemory = (webContents, label, reason) => {
+  try {
+    if (!webContents || webContents.isDestroyed()) return;
+    const rendererPid = webContents.getOSProcessId();
+    webContents
+      .getProcessMemoryInfo()
+      .then((memoryInfo) => {
+        log.error(
+          `[DIAG][${label}] renderer-memory reason=${reason} pid=${rendererPid} ${JSON.stringify(memoryInfo)}`
+        );
+      })
+      .catch((error) => {
+        log.error(
+          `[DIAG][${label}] renderer-memory-failed reason=${reason}`,
+          error
+        );
+      });
+  } catch (error) {
+    log.error(`[DIAG][${label}] renderer-memory-failed reason=${reason}`, error);
+  }
+};
+
+const attachWebContentsDiagnostics = (webContents, label) => {
+  if (!webContents || webContents.isDestroyed()) return;
+  webContents.on("render-process-gone", (_event, details) => {
+    log.error(
+      `[DIAG][${label}] render-process-gone ${JSON.stringify(details || {})}`
+    );
+    logRendererMemory(webContents, label, "render-process-gone");
+  });
+  webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      // ERR_ABORTED (-3) is commonly caused by intentional navigation/reload.
+      if (isMainFrame && errorCode !== -3) {
+        log.error(
+          `[DIAG][${label}] did-fail-load code=${errorCode} description=${errorDescription} mainFrame=${isMainFrame} url=${validatedURL}`
+        );
+      }
+    }
+  );
+  webContents.on("preload-error", (_event, preloadPath, error) => {
+    log.error(
+      `[DIAG][${label}] preload-error path=${preloadPath}`,
+      error
+    );
+  });
+};
+
+const attachBrowserWindowDiagnostics = (browserWindow, label) => {
+  if (!browserWindow || browserWindow.isDestroyed()) return;
+  attachWebContentsDiagnostics(browserWindow.webContents, label);
+  browserWindow.on("unresponsive", () => {
+    log.error(`[DIAG][${label}] renderer-unresponsive`);
+    logRendererMemory(browserWindow.webContents, label, "unresponsive");
+  });
+  browserWindow.on("responsive", () => {
+    log.warn(`[DIAG][${label}] renderer-responsive-again`);
+    logRendererMemory(browserWindow.webContents, label, "responsive-again");
+  });
+};
+
+process.on("uncaughtExceptionMonitor", (error, origin) => {
+  log.error(`[DIAG][Main] uncaught-exception origin=${origin}`, error);
+});
+
+app.on("child-process-gone", (_event, details) => {
+  log.error(`[DIAG][Electron] child-process-gone ${JSON.stringify(details || {})}`);
+});
+
+log.info(
+  `[DIAG][Main] app-start version=${packageJson.version} platform=${process.platform} electron=${process.versions.electron} chromium=${process.versions.chrome} node=${process.versions.node} pid=${process.pid}`
+);
 store.set("appVersion", packageJson.version);
 store.set("appPlatform", os.platform() + " " + os.release());
 const mainWinDisplayScale = store.get("mainWinDisplayScale") || 1;
@@ -553,6 +628,7 @@ const createMainWin = () => {
     delete options.y;
   }
   mainWin = new BrowserWindow({ ...options, show: false });
+  attachBrowserWindowDiagnostics(mainWin, "main-window");
   mainWin.once("ready-to-show", () => {
     if (mainWin && !mainWin.isDestroyed()) {
       if (store.get("isAutoMaximizeWin") === "yes") {
@@ -988,6 +1064,7 @@ const createMainWin = () => {
       readerWindow.loadURL(url);
       // readerWindow.webContents.openDevTools();
     }
+    attachBrowserWindowDiagnostics(readerWindow, "reader-window");
     bindReaderWindowState(readerWindow);
     if (store.get("isAlwaysOnTop") === "yes") {
       readerWindow.setAlwaysOnTop(true);
@@ -1952,6 +2029,7 @@ const createMainWin = () => {
     if (mainWin) {
       mainView = new WebContentsView(options);
       mainWin.contentView.addChildView(mainView);
+      attachWebContentsDiagnostics(mainView.webContents, "main-view");
       let { width, height } = mainWin.getContentBounds();
       mainView.setBounds({ x: 0, y: 0, width: width, height: height });
       mainView.webContents.loadURL(config.url);

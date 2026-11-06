@@ -197,11 +197,29 @@ const Viewer = (props: ViewerProps) => {
 
   const handleHighlight = async (rendition: any) => {
     if (!rendition) return;
+    const startedAt = performance.now();
+    const traceId = rendition.diagnosticTraceId || "unknown";
+    console.info(
+      `[DIAG][Reader] restoreHighlights:start ${JSON.stringify({
+        traceId,
+        format: propsRef.current.currentBook.format,
+        chapterIndex: stateRef.current.chapterDocIndex,
+      })}`
+    );
     let highlighters: any = await DatabaseService.getRecordsByBookKey(
       propsRef.current.currentBook.key,
       "notes"
     );
-    if (!highlighters) return;
+    if (!highlighters) {
+      console.info(
+        `[DIAG][Reader] restoreHighlights:skip ${JSON.stringify({
+          traceId,
+          reason: "no-note-records",
+          durationMs: Math.round((performance.now() - startedAt) * 10) / 10,
+        })}`
+      );
+      return;
+    }
     let highlightersByChapter = highlighters.filter((item: Note) => {
       let cfi = JSON.parse(item.cfi);
       if (cfi.cfi) {
@@ -217,6 +235,7 @@ const Viewer = (props: ViewerProps) => {
         return item.chapterIndex === stateRef.current.chapterDocIndex;
       }
     });
+    const chapterNoteCount = highlightersByChapter.length;
     if (propsRef.current.currentBook.format === "PDF") {
       highlightersByChapter = highlightersByChapter.map((item: Note) => {
         let cfi = JSON.parse(item.cfi);
@@ -263,6 +282,14 @@ const Viewer = (props: ViewerProps) => {
         handleNoteClick
       );
     }
+    console.info(
+      `[DIAG][Reader] restoreHighlights:complete ${JSON.stringify({
+        traceId,
+        totalNotes: highlighters.length,
+        chapterNotes: chapterNoteCount,
+        durationMs: Math.round((performance.now() - startedAt) * 10) / 10,
+      })}`
+    );
   };
   const handleNoteClick = (event: Event) => {
     propsRef.current.handleNoteKey((event.target as any).dataset.key);
@@ -271,7 +298,14 @@ const Viewer = (props: ViewerProps) => {
   };
   const handleRenderBook = async () => {
     if (lock) return;
+    const openStartedAt = performance.now();
     let { key, path, format, name } = propsRef.current.currentBook;
+    console.info(
+      `[DIAG][Reader] openBook:start ${JSON.stringify({
+        format,
+        readerMode: propsRef.current.readerMode,
+      })}`
+    );
     if (ConfigService.getAllListConfig("seperateStyleBooks").includes(key)) {
       window.currentBookKey = key;
       propsRef.current.handleBackgroundColor(
@@ -288,10 +322,20 @@ const Viewer = (props: ViewerProps) => {
       stateRef.current.rendition.removeContent();
     }
     let result;
+    const cacheCheckStartedAt = performance.now();
     let isCacheExsit = await BookUtil.isBookExist("cache-" + key, "zip", path);
+    console.info(
+      `[DIAG][Reader] cacheCheck:complete ${JSON.stringify({
+        format,
+        cacheExists: isCacheExsit,
+        durationMs:
+          Math.round((performance.now() - cacheCheckStartedAt) * 10) / 10,
+      })}`
+    );
     if (isFixedLayoutComic(propsRef.current.currentBook)) {
       isCacheExsit = false;
     }
+    const fetchStartedAt = performance.now();
     if (
       isElectron &&
       (propsRef.current.currentBook.format === "CBZ" ||
@@ -307,6 +351,17 @@ const Viewer = (props: ViewerProps) => {
         path
       );
     }
+    console.info(
+      `[DIAG][Reader] fetchBook:complete ${JSON.stringify({
+        format,
+        cacheExists: isCacheExsit,
+        bytes:
+          result && typeof (result as any).byteLength === "number"
+            ? (result as any).byteLength
+            : null,
+        durationMs: Math.round((performance.now() - fetchStartedAt) * 10) / 10,
+      })}`
+    );
 
     const crop = ConfigService.getObjectConfig(
       propsRef.current.currentBook.key,
@@ -403,6 +458,7 @@ const Viewer = (props: ViewerProps) => {
       ocrQueue = task.catch(() => undefined);
       return task;
     };
+    const renditionStartedAt = performance.now();
     let rendition = BookHelper.getRendition(
       result,
       {
@@ -548,6 +604,16 @@ const Viewer = (props: ViewerProps) => {
       },
       Kookit
     );
+    const traceId = rendition.diagnosticTraceId || "unknown";
+    console.info(
+      `[DIAG][Reader] createRendition:complete ${JSON.stringify({
+        traceId,
+        format,
+        durationMs:
+          Math.round((performance.now() - renditionStartedAt) * 10) / 10,
+      })}`
+    );
+    const initialRenderStartedAt = performance.now();
     if (propsRef.current.currentBook.format === "TXT") {
       let bookLocation = ConfigService.getObjectConfig(
         propsRef.current.currentBook.key,
@@ -561,8 +627,23 @@ const Viewer = (props: ViewerProps) => {
     } else {
       await rendition.renderTo(document.getElementById("page-area"));
     }
+    console.info(
+      `[DIAG][Reader] initialRender:complete ${JSON.stringify({
+        traceId,
+        chapterDocCount: rendition.getChapterDoc()?.length || 0,
+        durationMs:
+          Math.round((performance.now() - initialRenderStartedAt) * 10) / 10,
+      })}`
+    );
 
+    const restStartedAt = performance.now();
     await handleRest(rendition);
+    console.info(
+      `[DIAG][Reader] handleRest:complete ${JSON.stringify({
+        traceId,
+        durationMs: Math.round((performance.now() - restStartedAt) * 10) / 10,
+      })}`
+    );
     if (
       ConfigService.getReaderConfig("isAutoReading") === "yes" &&
       propsRef.current.readerMode === "scroll"
@@ -581,6 +662,14 @@ const Viewer = (props: ViewerProps) => {
       "recentBooks"
     );
     document.title = name + " - Koodo Reader";
+    console.info(
+      `[DIAG][Reader] openBook:complete ${JSON.stringify({
+        traceId,
+        format,
+        totalDurationMs:
+          Math.round((performance.now() - openStartedAt) * 10) / 10,
+      })}`
+    );
   };
 
   const handleRest = async (rendition: any) => {
@@ -725,7 +814,20 @@ const Viewer = (props: ViewerProps) => {
         return;
       }
       setTimeout(async () => {
+        const refreshStartedAt = performance.now();
+        console.info(
+          `[DIAG][Reader] delayedTxtRefresh:start ${JSON.stringify({
+            traceId: rendition.diagnosticTraceId || "unknown",
+          })}`
+        );
         await rendition.refreshContent();
+        console.info(
+          `[DIAG][Reader] delayedTxtRefresh:complete ${JSON.stringify({
+            traceId: rendition.diagnosticTraceId || "unknown",
+            durationMs:
+              Math.round((performance.now() - refreshStartedAt) * 10) / 10,
+          })}`
+        );
         let chapters = rendition.getChapter();
         let flattenChapters = rendition.flatChapter(chapters);
         propsRef.current.handleHtmlBook({
