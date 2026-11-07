@@ -3,7 +3,7 @@
 
 > 最后更新：2026-11-07  
 > 文档性质：当前 Koodo Reader Fork 项目的唯一维护型需求与进度文档  
-> 当前阶段：开发环境与原有数据互通已验收；章节目录滚轮回跳问题已解决；大型 TXT 第一轮日志诊断已完成，已确认延迟全文件重解析、深位置章节定位耗时、批注数据库读取异常耗时及章节边界切换断层；下一阶段优先处理大型 TXT 性能与连续滚动架构
+> 当前阶段：开发环境与原有数据互通已验收；章节目录滚轮回跳问题已解决；大型 TXT 第一项性能改造已提交：完整轻量章节索引与章节 HTML 按需生成，替代 delayedTxtRefresh 全书 HTML/DOM 重建；尚待本地构建和约 72.6MiB 样本实测；后续优先处理深位置定位、批注读取和连续章节窗口
 
 ---
 
@@ -204,7 +204,7 @@
 
 根据现有日志和代码检查，当前优先级如下：
 
-1. **最高优先级：消除首屏之后的全文件重复解析。** delayedTxtRefresh 从 large-file-window 切换到 full-file 已有日志证据，是目前最明确、影响范围最大的性能问题。
+1. **第一轮代码已实现、待验证：消除首屏之后的全文件重复解析。** Kookit 已改为首次解析时扫描全文建立轻量章节索引，并在章节真正加载时才生成该章 HTML；Koodo 已停用 delayedTxtRefresh 自动全书刷新。尚需运行仓库测试、构建并用约 72.6MiB TXT 实测。
 2. **高优先级：优化深位置定位。** findCurrentLine 在深位置达到 1.7 秒，需检查是否逐行扫描，并建立可直接定位的行偏移/章节索引，避免每次从文件开头重新搜索。
 3. **高优先级：查明数据库读取和 IPC 异常。** 6 条笔记出现 96.7 秒读取时间，不能归因于批注数量或高亮绘制；必须拆分 SQL 与 IPC 耗时。
 4. **高优先级：定位章节加载的偶发长耗时。** 不能只优化平均值，应追踪 1–4 秒级异常样本。
@@ -285,6 +285,43 @@
 
 ---
 
+
+
+### 3.9 首屏后全文件重解析：轻量章节索引替代实现（代码已提交、待验证）
+
+**代码核查结论：**
+
+- Koodo 的 `delayedTxtRefresh` 并非无用途的普通刷新。首次 `large-file-window` 只解析当前位置附近约 6,000 行，延迟调用 `refreshContent()` 的历史目的，是补齐全书章节目录和章节索引。
+- `TxtRender.refreshContent()` 会再次解析 TXT；`txtToHtml(..., { refresh: true })` 绕过窗口解析，生成全书 HTML，再由 `makeHtmlBook()` 使用 DOMParser 解析并拆分章节。
+- Koodo 已在 `handleRest()` 中提前取得并发布完整章节目录，因此新方案不再需要第二次刷新。Kookit 的 `refreshContent()` 方法仍保留，避免删除引擎 API；Koodo 不再自动调用它。
+
+**已提交的替代实现：**
+
+- Kookit `src/libs/textProcessor.ts` 新增 `buildTxtChapterIndex()`：使用字符串换行位置扫描全文，记录章节标题、章节序号、JavaScript 字符偏移、行数和估算长度；不创建全书 HTML，也不创建全书 DOM。
+- 章节标题识别沿用原有 `isTitle()` / 自定义正则规则，并保留“标题后没有正文则降级为普通文本”的原有行为。
+- 对没有有效章节标题的 TXT，继续使用每 500 行分章的兜底方式；后续分块保留块首空白行，避免切块时丢失原文。
+- Kookit `src/libs/html.ts` 将完整索引映射为 `book.sections` 和 `book.toc`。章节 section 的 `load()` 在真正需要显示时才切片原文、调用 `txtToHtml()` 并创建该章 Blob URL。
+- `book.sections` 保留原有 `id / load / unload / size` 接口；`GeneralParser` 继续生成完整 `chapterDocList`，目录跳转、章节加载和阅读进度仍使用现有接口。
+- `GeneralParser` 对纯文本章节标题增加不经过 DOMParser 的快速路径，并去掉重复解码，避免完整 7,000+ 章节目录初始化时重复解析大量纯文本标题。
+- Koodo `src/containers/viewer/component.tsx` 已停用 1 秒后的 `delayedTxtRefresh` 自动全书刷新；首次 renderTo 建立的完整目录直接供阅读器使用。
+
+**日志预期：**
+
+- 首次解析应出现 `buildChapterIndex` / `buildLazyChapterIndex`，记录行数、章节数和索引模式。
+- `buildLazyChapterIndex` 应记录 `fullBookHtmlGenerated=false`、`fullBookDomParsed=false`。
+- `loadChapterHtml` 改为记录单章原文字符数、索引模式和实际生成的单章 HTML 字符数。
+- 首屏之后不应再出现 Koodo 的 `delayedTxtRefresh:start`，也不应出现由该定时器触发的全书 `refreshContent()`。
+
+**测试与状态：**
+
+- Kookit 新增 `yarn test:txt-index`，覆盖完整标题索引、前言/无标题段、连续空章节标题、500 行兜底、自定义正则、CRLF/CR 换行、空文件及分块首行空白。
+- 本次对索引逻辑做了隔离样例检查；尚未在完整仓库依赖环境运行新增测试脚本，也尚未运行 Kookit 构建或 Koodo typecheck/build。当前状态为**已实现、待验证**，不能据此宣称真实大文件性能已经提升。
+- 用户本地拉取 Koodo 和 Kookit 后，先运行 Kookit `yarn test:txt-index` 和构建，再运行 Koodo `yarn.cmd typecheck`、`yarn.cmd build`；随后使用约 72.6MiB、约 7,700 章样本验证目录、章节跳转、进度恢复、内存和首屏后日志。
+- 当前没有修改书库、数据库、阅读记录、笔记或高亮数据结构，也没有执行数据迁移。
+- Blob URL 的释放仍未在本阶段处理：当前 `unload()` 仍为空实现，后续资源优化阶段必须继续检查 URL 生命周期和长时间翻阅的资源累积。
+- 章节 `size` 使用原文长度与行数估算旧 HTML 长度，阅读进度权重需要通过实际跳转/恢复测试确认；不是已验证的精确 HTML 长度。
+
+---
 
 ## 4. 三类小说研究批注
 
@@ -590,7 +627,7 @@ Electron 开发版与原安装版已完成双向实测：双方均能读取对�
 
 当前阶段以大型 TXT 性能和连续滚动为首要任务，按以下顺序推进：
 
-1. **确认并处理延迟全文件重解析。** 检查 delayedTxtRefresh / refreshContent() 的调用目的、触发条件和数据依赖；优先避免首屏已经显示后再次把全书转换为 HTML、DOM 和完整章节 HTML。若只需补充章节信息，应改为构建轻量章节索引或补充局部窗口数据。
+1. **验证轻量章节索引替代实现。** Kookit 已在首次解析时建立完整章节元数据，章节 HTML 改为按需生成；Koodo 已停用 delayedTxtRefresh 自动刷新。拉取两个仓库后运行 `yarn test:txt-index`、Kookit 构建、Koodo `yarn.cmd typecheck` / `yarn.cmd build`，再用约 72.6MiB、约 7,700 章样本验证目录完整、深位置跳转、阅读进度和内存。
 2. **优化深位置章节定位。** 检查 findCurrentLine 是否从头扫描；根据真实代码选择行偏移索引、二分查找或其他可随机定位的数据结构。验证第 1 章、第 1,600 章和第 6,800 章附近的定位时间。
 3. **拆分批注数据库读取和 IPC 耗时。** 将 dbReadDurationMs 拆为 IPC 往返、SQL 执行、结果读取/序列化和 Renderer 处理；解释 6 条笔记出现约 96.7 秒读取时间的原因。不要先把所有完整批注正文缓存进内存。
 4. **定位章节 HTML 加载偶发长耗时。** 针对 1–4 秒级 loadChapterHtml 样本补充细分计时，确认章节内容生成、Blob、iframe 写入、CSS、布局和高度计算中真正耗时的阶段。

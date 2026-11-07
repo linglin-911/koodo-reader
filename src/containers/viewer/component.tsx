@@ -846,41 +846,8 @@ const Viewer = (props: ViewerProps) => {
       }, 1000);
       return false;
     });
-    if (
-      propsRef.current.currentBook.format === "TXT" &&
-      rendition.format !== "CACHE"
-    ) {
-      if (
-        flattenChapters.length > 0 &&
-        flattenChapters[0].label === "Chapter 0"
-      ) {
-        return;
-      }
-      setTimeout(async () => {
-        const refreshStartedAt = performance.now();
-        console.info(
-          `[DIAG][Reader] delayedTxtRefresh:start ${JSON.stringify({
-            traceId: rendition.diagnosticTraceId || "unknown",
-          })}`
-        );
-        await rendition.refreshContent();
-        console.info(
-          `[DIAG][Reader] delayedTxtRefresh:complete ${JSON.stringify({
-            traceId: rendition.diagnosticTraceId || "unknown",
-            durationMs:
-              Math.round((performance.now() - refreshStartedAt) * 10) / 10,
-          })}`
-        );
-        let chapters = rendition.getChapter();
-        let flattenChapters = rendition.flatChapter(chapters);
-        propsRef.current.handleHtmlBook({
-          key: propsRef.current.currentBook.key,
-          chapters,
-          flattenChapters,
-          rendition: rendition,
-        });
-      }, 1000);
-    }
+    // TXT 全书章节目录已由 Kookit 在 renderTo() 阶段通过轻量索引完整建立。
+    // 不再延迟调用 refreshContent()，避免首屏后重新生成全书 HTML 和 DOM。
   };
 
   const handleLocation = () => {
