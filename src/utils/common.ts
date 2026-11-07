@@ -753,6 +753,17 @@ export const preCacheAllBooks = async (bookList: Book[]) => {
     if (selectedBook.format === "PDF" || isFixedLayoutBook(selectedBook)) {
       continue;
     }
+    if (isElectron && selectedBook.format === "TXT") {
+      const { precachePersistentTxt } = await import("./storage/txtIndexService");
+      if (
+        await precachePersistentTxt(
+          selectedBook.key,
+          selectedBook.path,
+          selectedBook.charset,
+          getParserRegex("TXT", selectedBook.key)
+        )
+      ) continue;
+    }
     if (
       await BookUtil.isBookExist(
         "cache-" + selectedBook.key,

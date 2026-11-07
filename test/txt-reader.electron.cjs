@@ -28,9 +28,15 @@ app
     db = new Database(path.join(storage, "config", "notes.db"));
     db.exec("CREATE TABLE notes(key TEXT PRIMARY KEY)");
     const service = createTxtIndexService({ getConnection: () => db });
-    ipcMain.handle("database-command", (event, command) =>
-      service(command, event.sender.id)
-    );
+    const commands = [];
+    ipcMain.handle("database-command", async (event, command) => {
+      commands.push({
+        action: command.action,
+        chapterIndex: command.chapterIndex,
+        length: command.length,
+      });
+      return service(command, event.sender.id);
+    });
     ipcMain.on("storage-location", (event) => {
       event.returnValue = storage;
     });
@@ -65,16 +71,19 @@ app
     });
     await window.loadURL(`http://127.0.0.1:${port}/__txt_test__`);
     const result = await window.webContents.executeJavaScript(`(async()=>{
-    window.electronAPI={invoke:(...args)=>require("electron").ipcRenderer.invoke(...args),sendSync:(...args)=>require("electron").ipcRenderer.sendSync(...args)};
-    const [{openPersistentTxt},Kookit]=await Promise.all([import("/src/utils/storage/txtIndexService.ts"),import("/src/assets/lib/kookit.min.js")]);
+    const requested=[];window.electronAPI={invoke:(...args)=>{requested.push(args[1].action);return require("electron").ipcRenderer.invoke(...args);},sendSync:(...args)=>require("electron").ipcRenderer.sendSync(...args)};
+    const [{openPersistentTxt,precachePersistentTxt,clearPersistentTxtCache},Kookit]=await Promise.all([import("/src/utils/storage/txtIndexService.ts"),import("/src/assets/lib/kookit.min.js")]);
     const area=document.getElementById("page-area");
     const results=[];let savedLocation;
     for(const phase of ["cold","hot"]){
+      const requestStart=requested.length;
       const prepared=await openPersistentTxt("reader-fixture","","utf-8","^Chapter ");
       const cacheHit=Boolean(await prepared.store.load(false));
       const rendition=Kookit.BookHelper.getRendition(prepared.buffer,{format:"TXT",charset:prepared.encoding,
         parserRegex:"^Chapter ",txtIndexStore:prepared.store,readerMode:"scroll",animation:"none",isMobile:"no",platform:"electron"},Kookit);
+      if(prepared.buffer.byteLength!==0)throw new Error("Whole-file buffer returned by open");
       await rendition.renderTo(area);
+      if(rendition.txtBuffer.byteLength!==0)throw new Error("Reader retained the original buffer");
       if(phase==="cold")await rendition.goToChapterDocIndex(2);else await rendition.goToPosition(savedLocation);
       const doc=rendition.getDocument();
       if(!doc.body.textContent.includes("正文三甲乙"))throw new Error("Deep chapter/position restore did not render expected text");
@@ -83,13 +92,33 @@ app
       const selection=doc.getSelection();selection.removeAllRanges();selection.addRange(range);
       if(selection.toString()!=="正文三甲乙")throw new Error("Normalized TXT lost selectable body text");
       await rendition.record();savedLocation=JSON.stringify(rendition.tempLocation);
-      results.push({phase,cacheHit,chapterCount:rendition.getChapterDoc().length,chapterDocIndex:rendition.tempLocation.chapterDocIndex,selectionPreserved:true});
-      rendition.removeContent();area.innerHTML="";
+      results.push({phase,cacheHit,wholeSourceReads:requested.slice(requestStart).filter(action=>action==="read-source").length,chapterCount:rendition.getChapterDoc().length,chapterDocIndex:rendition.tempLocation.chapterDocIndex,selectionPreserved:true});
+      // Preparing or clearing the cache must not invalidate this reader's ticket.
+      await precachePersistentTxt("reader-fixture","","utf-8","^Chapter ");
+      await clearPersistentTxtCache("reader-fixture","","utf-8","^Chapter ");
+      await rendition.goToChapterDocIndex(0);
+      await precachePersistentTxt("reader-fixture","","utf-8","^Chapter ");
+      rendition.removeContent();await prepared.store.close();area.innerHTML="";
     }
     return results;
   })()`);
+    assert.ok(
+      commands
+        .filter((c) => c.action === "read-chapter")
+        .every((c) => c.length <= 256 * 1024)
+    );
+    assert.deepEqual(
+      commands
+        .filter((c) => c.action === "read-chapter")
+        .map((c) => c.chapterIndex),
+      [2, 0, 2, 0]
+    );
     assert.equal(result[0].cacheHit, false);
     assert.equal(result[1].cacheHit, true);
+    assert.deepEqual(
+      result.map((row) => row.wholeSourceReads),
+      [1, 0]
+    );
     assert.ok(
       result.every(
         (row) =>

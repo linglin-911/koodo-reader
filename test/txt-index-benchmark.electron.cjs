@@ -92,12 +92,57 @@ app
           const started = performance.now();
           const opened = await service(request, 1);
           const openMs = performance.now() - started;
-          let commitDiagnostics = null;
+          let commitDiagnostics = null,
+            sourceReads = 0,
+            bodyBytes = 0;
+          const readChapters = [];
           const config = {
             charset: opened.encoding,
             parserRegex: request.parserRegex,
             txtIndexStore: {
               load: async (force) => (force ? null : opened.index),
+              readSource: async () => {
+                sourceReads++;
+                const result = await service(
+                  { ...request, action: "read-source", ticket: opened.ticket },
+                  1
+                );
+                return result.buffer;
+              },
+              readChapter: async (chapter) => {
+                readChapters.push(chapter.index);
+                const decoder = new TextDecoder(opened.encoding, {
+                  fatal: true,
+                  ignoreBOM: true,
+                });
+                const parts = [];
+                for (
+                  let offset = 0;
+                  offset < chapter.byteEnd - chapter.byteStart;
+                ) {
+                  const length = Math.min(
+                    256 * 1024,
+                    chapter.byteEnd - chapter.byteStart - offset
+                  );
+                  const result = await service(
+                    {
+                      ...request,
+                      action: "read-chapter",
+                      ticket: opened.ticket,
+                      chapterIndex: chapter.index,
+                      chapterId: chapter.chapterId,
+                      offset,
+                      length,
+                    },
+                    1
+                  );
+                  bodyBytes += result.buffer.byteLength;
+                  parts.push(decoder.decode(result.buffer, { stream: true }));
+                  offset += length;
+                }
+                parts.push(decoder.decode());
+                return parts.join("").replace(/\r\n?/g, "\n");
+              },
               save: async (index) => {
                 const committed = await service(
                   {
@@ -110,14 +155,12 @@ app
                   },
                   1
                 );
+                scans++;
                 commitDiagnostics = committed.diagnostics;
               },
             },
           };
-          const renderer = new TxtRender(
-            new Uint8Array(opened.buffer).buffer,
-            config
-          );
+          const renderer = new TxtRender(new ArrayBuffer(0), config);
           const parseStarted = performance.now();
           await renderer.parse();
           const parseMs = performance.now() - parseStarted;
@@ -138,6 +181,10 @@ app
             cacheHit: opened.cacheHit,
             openMs,
             parseMs,
+            wholeSourceReads: sourceReads,
+            retainedSourceBytes: renderer.txtBuffer.byteLength,
+            bodyBytes,
+            readChapters,
             chapterScans: scans - phaseScans,
             totalChapterScans: scans - coldScanStart,
             ...opened.diagnostics,
@@ -146,6 +193,14 @@ app
             memory: process.memoryUsage(),
           };
           assert.equal(opened.cacheHit, phase === "hot");
+          assert.equal(sourceReads, phase === "hot" ? 0 : 1);
+          assert.equal(renderer.txtBuffer.byteLength, 0);
+          assert.deepEqual(readChapters, [0, 1599, 6799]);
+          renderer.book.destroy();
+          await service(
+            { ...request, action: "close", ticket: opened.ticket },
+            1
+          );
           assert.equal(
             scans - coldScanStart,
             1,

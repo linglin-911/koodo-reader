@@ -832,6 +832,9 @@ const ImportLocal = (props: ImportLocalProps) => {
       if (
         ConfigService.getReaderConfig("isPrecacheBook") === "yes" &&
         extension !== "pdf" &&
+        // Desktop TXT uses the original file + SQLite index on first open.
+        // Never generate a second full-book HTML ZIP during import.
+        !(isElectron && extension === "txt") &&
         !isFixedLayoutBook(result)
       ) {
         let cache = await rendition.preCache(file_content);

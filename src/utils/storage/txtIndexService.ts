@@ -34,6 +34,77 @@ interface TxtIndexSnapshot {
     fixedChunk: boolean;
   }[];
 }
+const CHAPTER_CHUNK_BYTES = 256 * 1024;
+type Invoke = (command: Record<string, unknown>) => Promise<unknown>;
+type Chapter = TxtIndexSnapshot["chapters"][number];
+const createSource = (
+  invoke: Invoke,
+  ticket: string,
+  initial: TxtIndexSnapshot | null,
+  encoding: string
+) => {
+  let cached = initial;
+  let closed = false;
+  const command = (data: Record<string, unknown>) => {
+    if (closed) throw new Error("TXT source is closed");
+    return invoke({ ticket, ...data });
+  };
+  return {
+    load: async (force: boolean) => {
+      if (closed) throw new Error("TXT source is closed");
+      return force ? null : cached;
+    },
+    save: async (index: TxtIndexSnapshot) => {
+      await command({ action: "commit", index });
+      cached = index;
+    },
+    readSource: async () => {
+      const result = (await command({ action: "read-source" })) as {
+        buffer: Uint8Array;
+      };
+      return result.buffer;
+    },
+    readChapter: async (chapter: Chapter) => {
+      const decoder = new TextDecoder(encoding, {
+        fatal: true,
+        ignoreBOM: true,
+      });
+      const parts: string[] = [];
+      const total = chapter.byteEnd - chapter.byteStart;
+      let offset = 0;
+      do {
+        const length = Math.min(CHAPTER_CHUNK_BYTES, total - offset);
+        const result = (await command({
+          action: "read-chapter",
+          chapterIndex: chapter.index,
+          chapterId: chapter.chapterId,
+          offset,
+          length,
+        })) as { buffer: Uint8Array };
+        if (result.buffer.byteLength !== length)
+          throw new Error("Incomplete TXT chapter range");
+        parts.push(decoder.decode(result.buffer, { stream: true }));
+        offset += length;
+      } while (offset < total);
+      parts.push(decoder.decode());
+      // Normalize after joining so a CRLF split across reads remains one LF.
+      const text = parts.join("").replace(/\r\n?/g, "\n");
+      if (text.length !== chapter.end - chapter.start)
+        throw new Error("TXT chapter length changed");
+      return text;
+    },
+    invalidate: async () => {
+      await command({ action: "invalidate" });
+      cached = null;
+    },
+    close: async () => {
+      if (closed) return;
+      closed = true;
+      cached = null;
+      await invoke({ action: "close", ticket });
+    },
+  };
+};
 export const openPersistentTxt = async (
   bookId: string,
   bookPath: string,
@@ -41,7 +112,7 @@ export const openPersistentTxt = async (
   parserRegex: string
 ) => {
   const storagePath = getStorageLocation();
-  const invoke = (command: Record<string, unknown>) =>
+  const invoke: Invoke = (command) =>
     window.electronAPI.invoke("database-command", {
       operation: "txt-index",
       dbName: "notes",
@@ -57,7 +128,7 @@ export const openPersistentTxt = async (
     parserRegex,
   })) as {
     ticket: string | null;
-    buffer: Uint8Array;
+    buffer?: Uint8Array;
     index: TxtIndexSnapshot | null;
     encoding: string;
     persistentSupported: boolean;
@@ -67,27 +138,70 @@ export const openPersistentTxt = async (
     `[DIAG][TXTIndex] open ${JSON.stringify({
       cacheHit: response.cacheHit,
       persistentSupported: response.persistentSupported,
-      wholeFileReadBytes: response.buffer.byteLength,
+      wholeFileReadBytes: response.buffer?.byteLength || 0,
       ipcRoundTripMs: Math.round((performance.now() - started) * 10) / 10,
     })}`
   );
-  const ticket = response.ticket;
-  let cached = response.index;
+  // Only the legacy adapter receives a whole buffer. The supported path starts
+  // empty; cold scan data lives exclusively inside prepareTxtIndex's call frame.
+  const legacy = response.buffer;
   return {
-    // Electron structured clone returns a Uint8Array, not a Node Buffer.
-    buffer: response.buffer.buffer.slice(
-      response.buffer.byteOffset,
-      response.buffer.byteOffset + response.buffer.byteLength
-    ) as ArrayBuffer,
+    buffer: legacy
+      ? (legacy.buffer.slice(
+          legacy.byteOffset,
+          legacy.byteOffset + legacy.byteLength
+        ) as ArrayBuffer)
+      : new ArrayBuffer(0),
     encoding: response.encoding,
-    store: response.persistentSupported
-      ? {
-          load: async (force: boolean) => (force ? null : cached),
-          save: async (index: TxtIndexSnapshot) => {
-            await invoke({ action: "commit", ticket, index });
-            cached = index;
-          },
-        }
-      : undefined,
+    cacheHit: response.cacheHit,
+    store:
+      response.persistentSupported && response.ticket
+        ? createSource(
+            invoke,
+            response.ticket,
+            response.index,
+            response.encoding
+          )
+        : undefined,
   };
+};
+export const precachePersistentTxt = async (
+  bookId: string,
+  bookPath: string,
+  charset: string,
+  parserRegex: string
+) => {
+  const source = await openPersistentTxt(
+    bookId,
+    bookPath,
+    charset,
+    parserRegex
+  );
+  if (!source.store) return false;
+  try {
+    const { prepareTxtIndex } = await import("../../assets/lib/kookit.min");
+    await prepareTxtIndex(source.store, source.encoding, parserRegex);
+    return true;
+  } finally {
+    await source.store.close();
+  }
+};
+export const clearPersistentTxtCache = async (
+  bookId: string,
+  bookPath: string,
+  charset: string,
+  parserRegex: string
+) => {
+  const source = await openPersistentTxt(
+    bookId,
+    bookPath,
+    charset,
+    parserRegex
+  );
+  if (!source.store) return;
+  try {
+    await source.store.invalidate();
+  } finally {
+    await source.store.close();
+  }
 };

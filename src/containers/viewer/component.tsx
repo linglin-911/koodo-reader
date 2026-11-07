@@ -369,7 +369,10 @@ const Viewer = (props: ViewerProps) => {
     let result;
     let persistentTxt: Awaited<ReturnType<typeof openPersistentTxt>> | undefined;
     const cacheCheckStartedAt = performance.now();
-    let isCacheExsit = await BookUtil.isBookExist("cache-" + key, "zip", path);
+    let isCacheExsit =
+      isElectron && format === "TXT"
+        ? false
+        : await BookUtil.isBookExist("cache-" + key, "zip", path);
     console.info(
       `[DIAG][Reader] cacheCheck:complete ${JSON.stringify({
         format,
@@ -664,6 +667,10 @@ const Viewer = (props: ViewerProps) => {
       },
       Kookit
     );
+    if (persistentTxt?.store) {
+      result = null;
+      persistentTxt.buffer = new ArrayBuffer(0);
+    }
     const traceId = rendition.diagnosticTraceId || "unknown";
     console.info(
       `[DIAG][Reader] createRendition:complete ${JSON.stringify({

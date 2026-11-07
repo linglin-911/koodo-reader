@@ -22,6 +22,7 @@ import {
   getPdfPassword,
   getStorageLocation,
   getTextRules,
+  getParserRegex,
   isFixedLayoutBook,
 } from "../../../utils/common";
 import { BookHelper } from "../../../assets/lib/kookit.min";
@@ -382,7 +383,7 @@ const MoreAction = (
           <div
             className="action-dialog-edit"
             style={{ paddingLeft: "0px" }}
-            onClick={() => {
+            onClick={async () => {
               if (
                 currentBook.format === "PDF" ||
                 isFixedLayoutBook(currentBook)
@@ -391,6 +392,27 @@ const MoreAction = (
                 return;
               }
               toast(t("Pre-caching"));
+              if (isElectron && currentBook.format === "TXT") {
+                try {
+                  const { precachePersistentTxt } = await import(
+                    "../../../utils/storage/txtIndexService"
+                  );
+                  if (
+                    await precachePersistentTxt(
+                      currentBook.key,
+                      currentBook.path,
+                      currentBook.charset,
+                      getParserRegex("TXT", currentBook.key)
+                    )
+                  ) {
+                    toast.success(t("Pre-caching successful"), { id: "add-book" });
+                    return;
+                  }
+                } catch {
+                  toast.error(t("Pre-caching failed"), { id: "add-book" });
+                  return;
+                }
+              }
               BookUtil.fetchBook(
                 currentBook.key,
                 currentBook.format.toLowerCase(),
@@ -449,6 +471,17 @@ const MoreAction = (
             className="action-dialog-edit"
             style={{ paddingLeft: "0px" }}
             onClick={async () => {
+              if (isElectron && currentBook.format === "TXT") {
+                const { clearPersistentTxtCache } = await import(
+                  "../../../utils/storage/txtIndexService"
+                );
+                await clearPersistentTxtCache(
+                  currentBook.key,
+                  currentBook.path,
+                  currentBook.charset,
+                  getParserRegex("TXT", currentBook.key)
+                );
+              }
               await BookUtil.deleteBook("cache-" + currentBook.key, "zip");
               toast.success(t("Deletion successful"));
             }}

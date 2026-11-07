@@ -478,6 +478,7 @@ const txtIndexService = createTxtIndexService({
     return getDBConnection("notes", storagePath, SqlStatement.sqlStatement);
   },
 });
+const txtIndexOwners = new WeakSet();
 const getSyncUtil = async (config, isUseCache = true) => {
   if (!isUseCache || !syncUtilCache[config.service]) {
     const { SyncUtil } = await import("./src/assets/lib/kookit-extra.min.mjs");
@@ -1582,6 +1583,11 @@ const createMainWin = () => {
   });
   ipcMain.handle("database-command", async (event, config) => {
     if (config?.operation === "txt-index") {
+      if (!txtIndexOwners.has(event.sender)) {
+        txtIndexOwners.add(event.sender);
+        const ownerId = event.sender.id;
+        event.sender.once("destroyed", () => txtIndexService.releaseOwner(ownerId));
+      }
       const started = performance.now();
       const result = await txtIndexService(config, event.sender.id);
       log.info(
