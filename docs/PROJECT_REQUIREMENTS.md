@@ -251,7 +251,7 @@
 开发时必须遵守：
 
 1. 代码修改前先阅读当前仓库的 `AGENTS.md`，并检查 GitHub/本地当前分支的真实代码，不得依赖旧对话猜测实现。
-2. 涉及代码编写、修改或 Review 前，按 `AGENTS.md` 要求先加载 `karpathy-guidelines` skill。
+2. 涉及代码编写、修改或 Review 前，先读取 `AGENTS.md` 和仓库内的 `.agents/skills/karpathy-guidelines/SKILL.md`；如果当前 Agent 的全局技能列表未提供该技能，直接读取仓库文件，不得因此阻塞开发。
 3. 先搜索现有实现并复用，不做无必要的大规模重构。
 4. 所有数据库操作必须通过 `database-command` IPC；渲染进程不得直接操作 SQLite。
 5. 不得读取 `src/assets/lib/` 下的混淆/压缩产物来理解源码，包括 `kookit-extra.min.mjs`、`kookit.min.js`、`kookit-extra-browser.min.js`；需要研究阅读引擎时，应查看 Kookit 源码仓库。
@@ -261,6 +261,28 @@
 9. 保护现有书库、笔记、高亮和阅读数据；数据库结构调整前先说明迁移与回滚策略。
 10. 默认不主动提交或推送代码；用户明确要求提交时再执行。文档更新按用户要求单独处理。
 11. 每个相对独立的功能完成后，执行类型检查、构建和针对性测试；不反复验收已通过的功能。
+
+---
+
+### 6.1 项目内 Agent Skill
+
+为避免新对话或不同编码 Agent 因全局技能目录不一致而找不到 `karpathy-guidelines`，该 Skill 已随主仓库提供：
+
+- Skill 文件：`.agents/skills/karpathy-guidelines/SKILL.md`
+- 许可证：`.agents/skills/karpathy-guidelines/LICENSE`
+- 上游来源：`youdotcom-oss/agent-skills`
+- 固定来源版本：`9bc61f556646770da3085c048f35db9547343c44`
+- 来源文件：[上游 SKILL.md](https://github.com/youdotcom-oss/agent-skills/blob/9bc61f556646770da3085c048f35db9547343c44/.agents/skills/karpathy-guidelines/SKILL.md)
+
+该文件遵循 MIT 许可证，并保留对应版权与许可文本。
+
+使用规则：
+
+1. 开始代码编写、修改或 Review 前，先读取仓库内的 Skill 文件。
+2. 如果 Agent 支持 `.agents/skills/` 自动发现机制，可以按其机制加载。
+3. 如果 ChatGPT 或其他 Agent 的全局技能目录没有显示该 Skill，直接读取仓库中的 `SKILL.md` 即可。
+4. 不得因为全局技能列表缺少该项而暂停开发、要求用户安装全局 Skill 或要求用户重复提供文件。
+5. `AGENTS.md` 中的项目开发规范优先级更高；Skill 是通用行为准则，不能覆盖项目已有的技术约束。
 
 ---
 
