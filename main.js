@@ -264,21 +264,29 @@ const logRendererMemory = (webContents, label, reason) => {
       reason === "periodic-sample" || reason === "responsive-again"
         ? "info"
         : "error";
-    webContents
-      .getProcessMemoryInfo()
-      .then((memoryInfo) => {
-        log[memoryLogLevel](
-          `[DIAG][${label}] renderer-memory reason=${reason} pid=${rendererPid} mainMemory=${JSON.stringify(mainMemory)} rendererMemory=${JSON.stringify(memoryInfo)}`
-        );
-      })
-      .catch((error) => {
-        log.warn(
-          `[DIAG][${label}] renderer-memory-failed reason=${reason}`,
-          error
-        );
-      });
+
+    // Electron 35 exposes per-process memory through app.getAppMetrics().
+    // webContents.getProcessMemoryInfo() is not available in this runtime.
+    const processMetrics = app.getAppMetrics();
+    const rendererMetric = processMetrics.find(
+      (metric) => metric.pid === rendererPid
+    );
+    if (!rendererMetric) {
+      log.warn(
+        `[DIAG][${label}] renderer-memory-unavailable reason=${reason} pid=${rendererPid} processMetricCount=${processMetrics.length}`
+      );
+      return;
+    }
+
+    // ProcessMetric.memory values are reported in KB by Electron.
+    log[memoryLogLevel](
+      `[DIAG][${label}] renderer-memory reason=${reason} pid=${rendererPid} processType=${rendererMetric.type} mainMemory=${JSON.stringify(mainMemory)} rendererMemoryKB=${JSON.stringify(rendererMetric.memory)} rendererCpu=${JSON.stringify(rendererMetric.cpu)}`
+    );
   } catch (error) {
-    log.error(`[DIAG][${label}] renderer-memory-failed reason=${reason}`, error);
+    log.error(
+      `[DIAG][${label}] renderer-memory-failed reason=${reason}`,
+      error
+    );
   }
 };
 
