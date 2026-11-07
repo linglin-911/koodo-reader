@@ -105,7 +105,7 @@ yarn rebuild
 
 ## 开发规范
 
-- **编码任务开始前必须先加载 `karpathy-guidelines` skill**：任何涉及写代码、改代码、review 的会话，动手前先用 skill 工具加载 `karpathy-guidelines`（先想后写、最小实现、外科手术式修改、目标驱动验证）。
+- **编码任务开始前必须先读取项目内的 `karpathy-guidelines`**：任何涉及写代码、改代码或 review 的任务，动手前必须读取并遵循仓库文件 `.agents/skills/karpathy-guidelines/SKILL.md`。该文件是本项目随仓库维护的 Agent Skill，来源与固定版本见该文件及项目需求文档。若当前 Agent 支持 Agent Skills，应从 `.agents/skills/` 自动发现/加载；若当前环境的全局技能列表没有显示该技能，直接读取上述仓库文件即可，不得因此中止任务或要求用户另外提供文件。
 - **不要主动提交代码**：修改完代码后，只展示改动内容和说明，由用户自行决定是否提交。除非用户明确要求提交，否则不要执行 `git commit`、`git push` 等操作。
 - **写新代码前先查现有实现**：动手前先在当前文件和代码库中搜索同类逻辑（事件监听、工具函数、ref 模式等），优先复用而不是新增。例如已有节流的 window `mousemove` 监听时，不要为同一事件再挂第二个监听器，而是把新逻辑合并进现有 handler。
 - **高频事件必须节流**：`mousemove` / `scroll` / `resize` 等事件统一使用 `src/utils/common.ts` 的 `throttle`（leading + trailing，鼠标停下后最后位置仍会处理）；handler 内避免每次触发都重置定时器或 setState，重复的状态更新应先用 ref 判断值是否变化。
