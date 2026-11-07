@@ -45,6 +45,8 @@ const ReaderBottomToolbar = (props: ReaderBottomToolbarProps) => {
     const position = htmlBook.rendition.getPosition();
     ConfigService.setObjectConfig(currentBook.key, position, "recordLocation");
     handleCurrentChapter(position.chapterTitle);
+    // 原逻辑会随阅读位置自动滚动目录，已停用，避免打断手动浏览。
+    // scrollContents(position.chapterTitle, position.chapterHref);
     scrollContents(position.chapterTitle, position.chapterHref, false);
   };
 

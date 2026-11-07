@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import "./contentList.css";
 import { ConfigService } from "../../../assets/lib/kookit-extra-browser.min";
 import { Trans } from "react-i18next";
@@ -23,7 +23,11 @@ interface FlatChapterItem {
   path: string;
 }
 
-const ContentList = () => {
+interface ContentListProps {
+  isActive: boolean;
+}
+
+const ContentList = ({ isActive }: ContentListProps) => {
   const currentBook = useAppStore((s) => s.book.currentBook);
   const htmlBook = useAppStore((s) => s.reader.htmlBook);
   const handleCurrentChapter = useAppStore((s) => s.handleCurrentChapter);
@@ -42,6 +46,56 @@ const ContentList = () => {
   }));
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const pendingOpenAlignmentRef = useRef<{
+    bookKey: string;
+    chapterTitle: string;
+    chapterHref: string;
+  } | null>(null);
+  const pendingCenterScrollRef = useRef<{
+    title: string;
+    href: string;
+  } | null>(null);
+
+  const findAndExpandCurrentChapter = (
+    chapters: any[],
+    location: { chapterTitle: string; chapterHref: string }
+  ): Set<string> => {
+    const expandedPaths = new Set<string>();
+
+    const matchesCurrentChapter = (item: any): boolean => {
+      if (location.chapterHref && typeof item.href === "string") {
+        const baseHref = item.href.split("#")[0];
+        return (
+          item.href === location.chapterHref ||
+          (!!baseHref && location.chapterHref.includes(baseHref))
+        );
+      }
+      return item.label === location.chapterTitle;
+    };
+
+    const containsCurrentChapter = (item: any): boolean =>
+      matchesCurrentChapter(item) ||
+      (Array.isArray(item.subitems) &&
+        item.subitems.some(containsCurrentChapter));
+
+    const visit = (items: any[], parentPath = "") => {
+      items.forEach((item, index) => {
+        const currentPath = parentPath
+          ? `${parentPath}-${index}`
+          : `${index}`;
+
+        if (Array.isArray(item.subitems) && item.subitems.length > 0) {
+          if (item.subitems.some(containsCurrentChapter)) {
+            expandedPaths.add(currentPath);
+          }
+          visit(item.subitems, currentPath);
+        }
+      });
+    };
+
+    visit(chapters);
+    return expandedPaths;
+  };
 
   const flattenChaptersWithLevel = (
     items: any[],
@@ -124,6 +178,8 @@ const ContentList = () => {
       {}
     );
     handleJumpPosition(prevPosition);
+    // 原逻辑会把刚跳转的章节滚到目录顶部；现在只更新标识，不改变用户的目录浏览位置。
+    // scrollContents(item.label, item.href);
     scrollContents(item.label, item.href, false);
     await htmlBook.rendition.goToChapter(item.index, item.href, item.label);
     handleCurrentChapter(item.label);
@@ -142,6 +198,57 @@ const ContentList = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [htmlBook]);
+
+  useEffect(() => {
+    if (!isActive) {
+      pendingOpenAlignmentRef.current = null;
+      pendingCenterScrollRef.current = null;
+      return;
+    }
+
+    const location = ConfigService.getObjectConfig(
+      currentBook.key,
+      "recordLocation",
+      {}
+    );
+    pendingOpenAlignmentRef.current = {
+      bookKey: currentBook.key,
+      chapterTitle: location.chapterTitle || "",
+      chapterHref: location.chapterHref || "",
+    };
+  }, [isActive, currentBook.key, htmlBook]);
+
+  useEffect(() => {
+    const pending = pendingOpenAlignmentRef.current;
+    if (
+      !isActive ||
+      !pending ||
+      pending.bookKey !== currentBook.key ||
+      !htmlBook ||
+      state.chapters !== htmlBook.chapters ||
+      !state.chapters.length
+    ) {
+      return;
+    }
+
+    pendingCenterScrollRef.current = {
+      title: pending.chapterTitle,
+      href: pending.chapterHref,
+    };
+    pendingOpenAlignmentRef.current = null;
+    setState((prev) => ({
+      ...prev,
+      expandedItems: findAndExpandCurrentChapter(state.chapters, pending),
+    }));
+  }, [isActive, currentBook.key, htmlBook, state.chapters]);
+
+  useLayoutEffect(() => {
+    const pending = pendingCenterScrollRef.current;
+    if (!isActive || !pending) return;
+
+    pendingCenterScrollRef.current = null;
+    scrollContents(pending.title, pending.href, true, "center");
+  }, [isActive, state.expandedItems]);
 
   useEffect(() => {
     if (state.isSearchOpen) {
