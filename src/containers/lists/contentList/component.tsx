@@ -45,8 +45,11 @@ const ContentList = () => {
   }));
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const contentListContainerRef = useRef<HTMLDivElement>(null);
   const prevPropsRef = useRef({ htmlBook, currentChapterIndex });
   const pendingScrollRef = useRef<{ title: string; href: string } | null>(null);
+  const isManualNavigationRef = useRef(false);
+  const currentBookKeyRef = useRef(currentBook.key);
 
   // 递归检查是否包含当前章节
   const checkIfContainsCurrentChapter = (
@@ -190,6 +193,10 @@ const ContentList = () => {
       chapters: htmlBook.chapters,
       chapterPages: htmlBook.rendition.getPages(),
     }));
+
+    // A manual directory browse takes priority over automatic chapter following.
+    if (isManualNavigationRef.current) return;
+
     let bookLocation: {
       text: string;
       chapterTitle: string;
@@ -219,6 +226,9 @@ const ContentList = () => {
   }
 
   async function handleJump(item: any) {
+    isManualNavigationRef.current = false;
+    pendingScrollRef.current = null;
+
     const prevPosition = ConfigService.getObjectConfig(
       currentBook.key,
       "recordLocation",
@@ -232,6 +242,29 @@ const ContentList = () => {
   }
 
   useEffect(() => {
+    const contentListContainer = contentListContainerRef.current;
+    const navigationBody =
+      contentListContainer?.closest(".navigation-body") || null;
+    if (!navigationBody) return;
+
+    const markManualNavigation = () => {
+      if (isManualNavigationRef.current) return;
+      isManualNavigationRef.current = true;
+      pendingScrollRef.current = null;
+    };
+
+    navigationBody.addEventListener("wheel", markManualNavigation, {
+      passive: true,
+    });
+    navigationBody.addEventListener("pointerdown", markManualNavigation);
+
+    return () => {
+      navigationBody.removeEventListener("wheel", markManualNavigation);
+      navigationBody.removeEventListener("pointerdown", markManualNavigation);
+    };
+  }, []);
+
+  useEffect(() => {
     if (htmlBook) {
       handleScrollToChapter(htmlBook);
     }
@@ -239,16 +272,35 @@ const ContentList = () => {
   }, []);
 
   useEffect(() => {
-    const prevProps = prevPropsRef.current;
-    if (htmlBook !== prevProps.htmlBook && htmlBook) {
-      handleScrollToChapter(htmlBook);
-      htmlBook.rendition.on("chapter-pages", () => {
-        handleScrollToChapter(htmlBook);
-      });
+    if (currentBookKeyRef.current !== currentBook.key) {
+      currentBookKeyRef.current = currentBook.key;
+      isManualNavigationRef.current = false;
+      pendingScrollRef.current = null;
     }
+  }, [currentBook.key]);
+
+  useEffect(() => {
+    if (!htmlBook) return;
+    const handleChapterPages = () => {
+      handleScrollToChapter(htmlBook);
+    };
+    htmlBook.rendition.on("chapter-pages", handleChapterPages);
+    return () => {
+      htmlBook.rendition.off("chapter-pages", handleChapterPages);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [htmlBook]);
+
+  useEffect(() => {
+    if (htmlBook !== prevPropsRef.current.htmlBook && htmlBook) {
+      handleScrollToChapter(htmlBook);
+    }
+
+    const prevProps = prevPropsRef.current;
     if (
       currentChapterIndex !== prevProps.currentChapterIndex &&
-      prevProps.htmlBook
+      prevProps.htmlBook &&
+      !isManualNavigationRef.current
     ) {
       let chapter = _.find(htmlBook.flattenChapters, {
         label: currentChapter,
@@ -391,7 +443,7 @@ const ContentList = () => {
   };
 
   return (
-    <div className="book-content-container">
+    <div ref={contentListContainerRef} className="book-content-container">
       {htmlBook && (
         <div className="book-content-header">
           <div>
