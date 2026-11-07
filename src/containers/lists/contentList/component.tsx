@@ -247,7 +247,8 @@ const ContentList = () => {
       contentListContainer?.closest(".navigation-body") || null;
     if (!navigationBody) return;
 
-    const markManualNavigation = () => {
+    const markManualNavigation = (event: Event) => {
+      if (event.type === "pointerdown" && event.target !== navigationBody) return;
       if (isManualNavigationRef.current) return;
       isManualNavigationRef.current = true;
       pendingScrollRef.current = null;
