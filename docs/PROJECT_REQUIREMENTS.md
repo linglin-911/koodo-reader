@@ -317,7 +317,7 @@
 |---|---|
 | Koodo 仓库 | `linglin-911/koodo-reader` |
 | Koodo 分支 | `diagnostics/phase1-logging` |
-| Koodo 当前 HEAD（含本次文档整理前提交） | `3f2f66c2e120fa4298712922b71febcc04a486fc` |
+| Koodo 文档整理前 HEAD | `3f2f66c2e120fa4298712922b71febcc04a486fc` |
 | 最近一次目录行为代码提交 | `42d2ad13737b5780e220b78a009b218cefd9c189` |
 | Kookit 仓库 | `linglin-911/kookit` |
 | Kookit 分支 | `diagnostics/phase1-logging` |
