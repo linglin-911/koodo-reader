@@ -4,6 +4,7 @@ import { ConfigService } from "../../../assets/lib/kookit-extra-browser.min";
 import { Trans } from "react-i18next";
 import i18n from "../../../i18n";
 import { useAppStore } from "../../../store/useAppStore";
+import { scrollContents } from "../../../utils/common";
 
 export interface ContentListState {
   chapters: any;
@@ -123,6 +124,7 @@ const ContentList = () => {
       {}
     );
     handleJumpPosition(prevPosition);
+    scrollContents(item.label, item.href, false);
     await htmlBook.rendition.goToChapter(item.index, item.href, item.label);
     handleCurrentChapter(item.label);
     handleCurrentChapterIndex(item.index);

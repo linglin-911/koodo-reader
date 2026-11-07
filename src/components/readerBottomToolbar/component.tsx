@@ -45,9 +45,7 @@ const ReaderBottomToolbar = (props: ReaderBottomToolbarProps) => {
     const position = htmlBook.rendition.getPosition();
     ConfigService.setObjectConfig(currentBook.key, position, "recordLocation");
     handleCurrentChapter(position.chapterTitle);
-    setTimeout(() => {
-      scrollContents(position.chapterTitle, position.chapterHref, false);
-    }, 1000);
+    scrollContents(position.chapterTitle, position.chapterHref, false);
   };
 
   const handleCurrentChapterIndex = (rendition: any) => {
