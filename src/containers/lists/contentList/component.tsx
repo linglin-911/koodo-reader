@@ -1,10 +1,8 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "./contentList.css";
 import { ConfigService } from "../../../assets/lib/kookit-extra-browser.min";
-import { scrollContents } from "../../../utils/common";
 import { Trans } from "react-i18next";
 import i18n from "../../../i18n";
-import _ from "underscore";
 import { useAppStore } from "../../../store/useAppStore";
 
 export interface ContentListState {
@@ -27,8 +25,6 @@ interface FlatChapterItem {
 const ContentList = () => {
   const currentBook = useAppStore((s) => s.book.currentBook);
   const htmlBook = useAppStore((s) => s.reader.htmlBook);
-  const currentChapter = useAppStore((s) => s.reader.currentChapter);
-  const currentChapterIndex = useAppStore((s) => s.reader.currentChapterIndex);
   const handleCurrentChapter = useAppStore((s) => s.handleCurrentChapter);
   const handleCurrentChapterIndex = useAppStore(
     (s) => s.handleCurrentChapterIndex
@@ -45,81 +41,6 @@ const ContentList = () => {
   }));
 
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const contentListContainerRef = useRef<HTMLDivElement>(null);
-  const prevPropsRef = useRef({ htmlBook, currentChapterIndex });
-  const pendingScrollRef = useRef<{ title: string; href: string } | null>(null);
-  const isManualNavigationRef = useRef(false);
-  const currentBookKeyRef = useRef(currentBook.key);
-
-  // 递归检查是否包含当前章节
-  const checkIfContainsCurrentChapter = (
-    item: any,
-    bookLocation: any
-  ): boolean => {
-    const isCurrentChapter =
-      item.href === bookLocation.chapterHref ||
-      (bookLocation.chapterHref &&
-        bookLocation.chapterHref.includes(item.href.split("#")[0]));
-
-    if (isCurrentChapter) return true;
-
-    if (item.subitems && item.subitems.length > 0) {
-      return item.subitems.some((subitem: any) =>
-        checkIfContainsCurrentChapter(subitem, bookLocation)
-      );
-    }
-
-    return false;
-  };
-
-  // 查找包含当前章节的路径并自动展开
-  const findAndExpandCurrentChapter = (
-    chapters: any[],
-    bookLocation: any,
-    parentPath: string = ""
-  ): Set<string> => {
-    const expandedPaths = new Set<string>();
-
-    const findInChapters = (items: any[], currentParentPath: string) => {
-      items.forEach((item, index) => {
-        const currentPath = currentParentPath
-          ? `${currentParentPath}-${index}`
-          : `${index}`;
-
-        // 检查当前项是否匹配当前章节
-        const isCurrentChapter =
-          item.href === bookLocation.chapterHref ||
-          (bookLocation.chapterHref &&
-            bookLocation.chapterHref.includes(item.href.split("#")[0]));
-
-        if (isCurrentChapter) {
-          // 如果找到当前章节，展开其所有父路径
-          const pathParts = currentPath.split("-");
-          for (let i = 0; i < pathParts.length - 1; i++) {
-            const parentPath = pathParts.slice(0, i + 1).join("-");
-            expandedPaths.add(parentPath);
-          }
-        }
-
-        // 检查子项中是否包含当前章节
-        if (item.subitems && item.subitems.length > 0) {
-          const hasCurrentChapterInSubitems = item.subitems.some(
-            (subitem: any) =>
-              checkIfContainsCurrentChapter(subitem, bookLocation)
-          );
-
-          if (hasCurrentChapterInSubitems) {
-            expandedPaths.add(currentPath);
-          }
-
-          findInChapters(item.subitems, currentPath);
-        }
-      });
-    };
-
-    findInChapters(chapters, parentPath);
-    return expandedPaths;
-  };
 
   const flattenChaptersWithLevel = (
     items: any[],
@@ -187,48 +108,15 @@ const ContentList = () => {
     await handleJump(item);
   };
 
-  async function handleScrollToChapter(htmlBook: any) {
+  function updateChapterData(htmlBook: any) {
     setState((prev) => ({
       ...prev,
       chapters: htmlBook.chapters,
       chapterPages: htmlBook.rendition.getPages(),
     }));
-
-    // A manual directory browse takes priority over automatic chapter following.
-    if (isManualNavigationRef.current) return;
-
-    let bookLocation: {
-      text: string;
-      chapterTitle: string;
-      chapterDocIndex: string;
-      chapterHref: string;
-    } = ConfigService.getObjectConfig(
-      currentBook.key,
-      "recordLocation",
-      {}
-    );
-
-    // 自动展开包含当前章节的路径
-    if (bookLocation.chapterHref) {
-      const expandedPaths = findAndExpandCurrentChapter(
-        htmlBook.chapters,
-        bookLocation
-      );
-      let chapter =
-        bookLocation.chapterTitle ||
-        (htmlBook && htmlBook.flattenChapters[0] ? "" : "Unknown chapter");
-      pendingScrollRef.current = {
-        title: chapter,
-        href: bookLocation.chapterHref,
-      };
-      setState((prev) => ({ ...prev, expandedItems: expandedPaths }));
-    }
   }
 
   async function handleJump(item: any) {
-    isManualNavigationRef.current = false;
-    pendingScrollRef.current = null;
-
     const prevPosition = ConfigService.getObjectConfig(
       currentBook.key,
       "recordLocation",
@@ -238,114 +126,20 @@ const ContentList = () => {
     await htmlBook.rendition.goToChapter(item.index, item.href, item.label);
     handleCurrentChapter(item.label);
     handleCurrentChapterIndex(item.index);
-    scrollContents(item.label, item.href);
   }
 
   useEffect(() => {
-    const contentListContainer = contentListContainerRef.current;
-    const navigationBody =
-      contentListContainer?.closest(".navigation-body") || null;
-    if (!navigationBody) return;
-
-    const markManualNavigation = (event: Event) => {
-      if (event.type === "pointerdown" && event.target !== navigationBody) return;
-      if (isManualNavigationRef.current) return;
-      isManualNavigationRef.current = true;
-      pendingScrollRef.current = null;
-    };
-
-    navigationBody.addEventListener("wheel", markManualNavigation, {
-      passive: true,
-    });
-    navigationBody.addEventListener("pointerdown", markManualNavigation);
-
-    return () => {
-      navigationBody.removeEventListener("wheel", markManualNavigation);
-      navigationBody.removeEventListener("pointerdown", markManualNavigation);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (htmlBook) {
-      handleScrollToChapter(htmlBook);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (currentBookKeyRef.current !== currentBook.key) {
-      currentBookKeyRef.current = currentBook.key;
-      isManualNavigationRef.current = false;
-      pendingScrollRef.current = null;
-    }
-  }, [currentBook.key]);
-
-  useEffect(() => {
     if (!htmlBook) return;
-    const handleChapterPages = () => {
-      handleScrollToChapter(htmlBook);
-    };
+
+    updateChapterData(htmlBook);
+    const handleChapterPages = () => updateChapterData(htmlBook);
     htmlBook.rendition.on("chapter-pages", handleChapterPages);
+
     return () => {
       htmlBook.rendition.off("chapter-pages", handleChapterPages);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [htmlBook, currentBook.key]);
-
-  useEffect(() => {
-    if (htmlBook !== prevPropsRef.current.htmlBook && htmlBook) {
-      handleScrollToChapter(htmlBook);
-    }
-
-    const prevProps = prevPropsRef.current;
-    if (
-      currentChapterIndex !== prevProps.currentChapterIndex &&
-      prevProps.htmlBook &&
-      !isManualNavigationRef.current
-    ) {
-      let chapter = _.find(htmlBook.flattenChapters, {
-        label: currentChapter,
-        index: currentChapterIndex,
-      });
-      if (!chapter || !chapter.href) {
-        return;
-      }
-      // scrollContents(chapter.label, chapter.href);
-      let bookLocation: {
-        text: string;
-        chapterTitle: string;
-        chapterDocIndex: number;
-        chapterHref: string;
-      } = {
-        text: "",
-        chapterTitle: chapter.label,
-        chapterDocIndex: chapter.index,
-        chapterHref: chapter.href,
-      };
-      const expandedPaths = findAndExpandCurrentChapter(
-        prevProps.htmlBook.chapters,
-        bookLocation
-      );
-      pendingScrollRef.current = {
-        title: chapter.label,
-        href: bookLocation.chapterHref,
-      };
-      setState((prev) => ({ ...prev, expandedItems: expandedPaths }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [htmlBook, currentChapterIndex]);
-
-  useEffect(() => {
-    prevPropsRef.current = { htmlBook, currentChapterIndex };
-  });
-
-  useLayoutEffect(() => {
-    if (pendingScrollRef.current) {
-      const target = pendingScrollRef.current;
-      pendingScrollRef.current = null;
-      scrollContents(target.title, target.href);
-    }
-  }, [state.expandedItems]);
+  }, [htmlBook]);
 
   useEffect(() => {
     if (state.isSearchOpen) {
@@ -444,7 +238,7 @@ const ContentList = () => {
   };
 
   return (
-    <div ref={contentListContainerRef} className="book-content-container">
+    <div className="book-content-container">
       {htmlBook && (
         <div className="book-content-header">
           <div>
