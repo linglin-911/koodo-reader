@@ -48,6 +48,7 @@ import {
 import * as Kookit from "../../assets/lib/kookit.min";
 import PopupRefer from "../../components/popups/popupRefer";
 import DatabaseService from "../../utils/storage/databaseService";
+import { openPersistentTxt } from "../../utils/storage/txtIndexService";
 import { getOcrResult, getOcrResultV2 } from "../../utils/request/reader";
 import { BookHelper } from "../../assets/lib/kookit.min";
 import { parseWithSystemOCR } from "../../utils/request/common";
@@ -366,6 +367,7 @@ const Viewer = (props: ViewerProps) => {
       stateRef.current.rendition.removeContent();
     }
     let result;
+    let persistentTxt: Awaited<ReturnType<typeof openPersistentTxt>> | undefined;
     const cacheCheckStartedAt = performance.now();
     let isCacheExsit = await BookUtil.isBookExist("cache-" + key, "zip", path);
     console.info(
@@ -376,11 +378,24 @@ const Viewer = (props: ViewerProps) => {
           Math.round((performance.now() - cacheCheckStartedAt) * 10) / 10,
       })}`
     );
-    if (isFixedLayoutComic(propsRef.current.currentBook)) {
+    if (
+      isFixedLayoutComic(propsRef.current.currentBook) ||
+      (isElectron && format === "TXT")
+    ) {
+      // Persistent TXT coordinates must always describe the original physical file.
+      // Existing ZIPs remain on disk; desktop reading now uses the indexed TXT path.
       isCacheExsit = false;
     }
     const fetchStartedAt = performance.now();
-    if (
+    if (isElectron && format === "TXT") {
+      persistentTxt = await openPersistentTxt(
+        key,
+        path,
+        propsRef.current.currentBook.charset,
+        getParserRegex(format, key)
+      );
+      result = persistentTxt.buffer;
+    } else if (
       isElectron &&
       (propsRef.current.currentBook.format === "CBZ" ||
         propsRef.current.currentBook.format === "CBT")
@@ -511,7 +526,8 @@ const Viewer = (props: ViewerProps) => {
           ? "yes"
           : "no",
         readerMode: propsRef.current.readerMode,
-        charset: propsRef.current.currentBook.charset,
+        charset: persistentTxt?.encoding || propsRef.current.currentBook.charset,
+        txtIndexStore: persistentTxt?.store,
         animation: ConfigService.getReaderConfig("animation") || "none",
         convertChinese: ConfigService.getReaderConfig("convertChinese"),
         bookLayout: ConfigService.getReaderConfig("bookLayout") || "",

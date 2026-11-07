@@ -26,6 +26,8 @@ const fs = require("fs");
 const fsExtra = require("fs-extra");
 const nodeCrypto = require("crypto");
 const { runDatabaseCommand } = require("./src/utils/main/database-diagnostics");
+const { createTxtIndexService } = require("./src/utils/main/txt-index-store");
+const { createDatabaseConnections } = require("./src/utils/main/database-connections");
 const yauzl = require("yauzl");
 const tarStream = require("tar-stream");
 const {
@@ -148,7 +150,6 @@ let mainView;
 // let mainViewList = []
 let readerWindowReadyToClose = false;
 let chatWindow;
-let dbConnection = {};
 let syncUtilCache = {};
 let pickerUtilCache = {};
 let downloadRequest = null;
@@ -469,28 +470,14 @@ if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
     "utf-8"
   );
 }
-const getDBConnection = (dbName, storagePath, sqlStatement) => {
-  if (!dbConnection[dbName]) {
-    if (!fs.existsSync(path.join(storagePath, "config"))) {
-      fs.mkdirSync(path.join(storagePath, "config"), { recursive: true });
-    }
-    dbConnection[dbName] = new Database(
-      path.join(storagePath, "config", `${dbName}.db`),
-      {}
-    );
-    dbConnection[dbName].pragma("journal_mode = WAL");
-    dbConnection[dbName].exec(sqlStatement["createTableStatement"][dbName]);
-    if (sqlStatement["migrateStatement"][dbName]) {
-      let sqlList = sqlStatement["migrateStatement"][dbName];
-      for (let sql of sqlList) {
-        try {
-          dbConnection[dbName].exec(sql);
-        } catch (error) {}
-      }
-    }
-  }
-  return dbConnection[dbName];
-};
+const databaseConnections = createDatabaseConnections(Database);
+const getDBConnection = databaseConnections.getConnection;
+const txtIndexService = createTxtIndexService({
+  getConnection: async (storagePath) => {
+    const { SqlStatement } = await import("./src/assets/lib/kookit-extra.min.mjs");
+    return getDBConnection("notes", storagePath, SqlStatement.sqlStatement);
+  },
+});
 const getSyncUtil = async (config, isUseCache = true) => {
   if (!isUseCache || !syncUtilCache[config.service]) {
     const { SyncUtil } = await import("./src/assets/lib/kookit-extra.min.mjs");
@@ -1594,6 +1581,22 @@ const createMainWin = () => {
     return result;
   });
   ipcMain.handle("database-command", async (event, config) => {
+    if (config?.operation === "txt-index") {
+      const started = performance.now();
+      const result = await txtIndexService(config, event.sender.id);
+      log.info(
+        `[DIAG][Database] txtIndex ${JSON.stringify({
+          action: config.action,
+          cacheHit: result.cacheHit,
+          persistentSupported: result.persistentSupported,
+          transitionWholeFileRead: result.transitionWholeFileRead,
+          chapterCount: result.index?.chapters.length ?? result.chapterCount,
+          ...result.diagnostics,
+          durationMs: Math.round((performance.now() - started) * 10) / 10,
+        })}`
+      );
+      return result;
+    }
     return runDatabaseCommand(config, {
       loadRegistry: async () =>
         (await import("./src/assets/lib/kookit-extra.min.mjs")).SqlStatement,
@@ -1606,7 +1609,7 @@ const createMainWin = () => {
       await import("./src/assets/lib/kookit-extra.min.mjs");
     let { dbName, storagePath } = config;
     let db = getDBConnection(dbName, storagePath, SqlStatement.sqlStatement);
-    delete dbConnection[dbName];
+    databaseConnections.removeConnection(dbName, storagePath);
     // Flush WAL into the main .db file and flip to rollback journal mode so the
     // on-disk file is self-contained (header read/write version = 1, no -wal
     // dependency). Other consumers — e.g. the Expo app's expo-sqlite
