@@ -515,8 +515,7 @@ export function throttle<T extends (...args: any[]) => void>(
 export const scrollContents = (
   chapterTitle: string,
   chapterHref: string,
-  shouldScroll = true,
-  alignment: "start" | "center" = "start"
+  shouldScroll = true
 ) => {
   let contentBody = document.getElementsByClassName("navigation-body")[0];
   if (!contentBody) return;
@@ -534,23 +533,9 @@ export const scrollContents = (
   });
   if (targetContent.length > 0) {
     if (shouldScroll) {
-      const container = contentBody as HTMLElement;
-      const target = targetContent[0] as HTMLElement;
-      const containerRect = container.getBoundingClientRect();
-      const targetRect = target.getBoundingClientRect();
-      const targetTop =
-        container.scrollTop + targetRect.top - containerRect.top;
-      const desiredTop =
-        alignment === "center"
-          ? targetTop + target.offsetHeight / 2 - container.clientHeight / 2
-          : targetTop;
-      const maxScrollTop = Math.max(
-        0,
-        container.scrollHeight - container.clientHeight
-      );
-      container.scrollTo({
+      contentBody.scrollTo({
         left: 0,
-        top: Math.min(maxScrollTop, Math.max(0, desiredTop)),
+        top: (targetContent[0] as any).offsetTop,
         behavior: "smooth",
       });
     }

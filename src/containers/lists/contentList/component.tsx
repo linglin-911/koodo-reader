@@ -236,9 +236,13 @@ const ContentList = ({ isActive }: ContentListProps) => {
       href: pending.chapterHref,
     };
     pendingOpenAlignmentRef.current = null;
+    const currentChapterPaths = findAndExpandCurrentChapter(
+      state.chapters,
+      pending
+    );
     setState((prev) => ({
       ...prev,
-      expandedItems: findAndExpandCurrentChapter(state.chapters, pending),
+      expandedItems: new Set([...prev.expandedItems, ...currentChapterPaths]),
     }));
   }, [isActive, currentBook.key, htmlBook, state.chapters]);
 

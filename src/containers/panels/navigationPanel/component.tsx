@@ -22,7 +22,6 @@ import { useAppStore } from "../../../store/useAppStore";
 
 export interface NavigationPanelProps {
   totalDuration: number;
-  isOpen: boolean;
 }
 
 export interface NavigationPanelState {
@@ -475,7 +474,7 @@ const NavigationPanel = (props: NavigationPanelProps) => {
           <div className="navigation-body-parent">
             <div className="navigation-body">
               {state.currentTab === "contents" ? (
-                <ContentList isActive={props.isOpen} />
+                <ContentList />
               ) : (
                 <BookNavList {...({ currentTab: state.currentTab } as any)} />
               )}

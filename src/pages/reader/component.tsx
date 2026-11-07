@@ -764,7 +764,6 @@ const Reader = () => {
         <NavigationPanel
           {...({
             totalDuration: state.totalDuration,
-            isOpen: state.isOpenLeftPanel,
           } as any)}
         />
       </div>
