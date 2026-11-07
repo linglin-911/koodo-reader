@@ -290,7 +290,7 @@ const ContentList = () => {
       htmlBook.rendition.off("chapter-pages", handleChapterPages);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [htmlBook]);
+  }, [htmlBook, currentBook.key]);
 
   useEffect(() => {
     if (htmlBook !== prevPropsRef.current.htmlBook && htmlBook) {
