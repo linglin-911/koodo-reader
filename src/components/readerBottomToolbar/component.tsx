@@ -46,7 +46,7 @@ const ReaderBottomToolbar = (props: ReaderBottomToolbarProps) => {
     ConfigService.setObjectConfig(currentBook.key, position, "recordLocation");
     handleCurrentChapter(position.chapterTitle);
     setTimeout(() => {
-      scrollContents(position.chapterTitle, position.chapterHref);
+      scrollContents(position.chapterTitle, position.chapterHref, false);
     }, 1000);
   };
 

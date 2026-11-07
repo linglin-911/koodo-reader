@@ -512,7 +512,11 @@ export function throttle<T extends (...args: any[]) => void>(
   };
 }
 
-export const scrollContents = (chapterTitle: string, chapterHref: string) => {
+export const scrollContents = (
+  chapterTitle: string,
+  chapterHref: string,
+  shouldScroll = true
+) => {
   let contentBody = document.getElementsByClassName("navigation-body")[0];
   if (!contentBody) return;
   let contentList = contentBody.getElementsByClassName(
@@ -528,11 +532,13 @@ export const scrollContents = (chapterTitle: string, chapterHref: string) => {
     }
   });
   if (targetContent.length > 0) {
-    contentBody.scrollTo({
-      left: 0,
-      top: (targetContent[0] as any).offsetTop,
-      behavior: "smooth",
-    });
+    if (shouldScroll) {
+      contentBody.scrollTo({
+        left: 0,
+        top: (targetContent[0] as any).offsetTop,
+        behavior: "smooth",
+      });
+    }
     targetContent[0].setAttribute("style", "color:red; font-weight: bold");
   }
 };
