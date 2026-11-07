@@ -25,6 +25,7 @@ const store = new Store();
 const fs = require("fs");
 const fsExtra = require("fs-extra");
 const nodeCrypto = require("crypto");
+const { runDatabaseCommand } = require("./src/utils/main/database-diagnostics");
 const yauzl = require("yauzl");
 const tarStream = require("tar-stream");
 const {
@@ -1593,34 +1594,12 @@ const createMainWin = () => {
     return result;
   });
   ipcMain.handle("database-command", async (event, config) => {
-    const { SqlStatement } =
-      await import("./src/assets/lib/kookit-extra.min.mjs");
-    let { statement, statementType, executeType, dbName, data, storagePath } =
-      config;
-    let db = getDBConnection(dbName, storagePath, SqlStatement.sqlStatement);
-    let sql = "";
-    if (statementType === "string") {
-      sql = SqlStatement.sqlStatement[statement][dbName];
-    } else if (statementType === "function") {
-      sql = SqlStatement.sqlStatement[statement][dbName](data);
-    }
-    const row = db.prepare(sql);
-    let result;
-    if (data) {
-      if (statement.startsWith("save") || statement.startsWith("update")) {
-        data = SqlStatement.jsonToSqlite[dbName](data);
-      }
-      result = row[executeType](data);
-    } else {
-      result = row[executeType]();
-    }
-    if (executeType === "all") {
-      return result.map((item) => SqlStatement.sqliteToJson[dbName](item));
-    } else if (executeType === "get") {
-      return SqlStatement.sqliteToJson[dbName](result);
-    } else {
-      return result;
-    }
+    return runDatabaseCommand(config, {
+      loadRegistry: async () =>
+        (await import("./src/assets/lib/kookit-extra.min.mjs")).SqlStatement,
+      getConnection: getDBConnection,
+      log: (message) => log.info(message),
+    });
   });
   ipcMain.handle("close-database", async (event, config) => {
     const { SqlStatement } =

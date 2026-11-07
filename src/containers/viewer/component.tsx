@@ -210,7 +210,8 @@ const Viewer = (props: ViewerProps) => {
     const dbReadStartedAt = performance.now();
     let highlighters: any = await DatabaseService.getRecordsByBookKey(
       propsRef.current.currentBook.key,
-      "notes"
+      "notes",
+      { traceId }
     );
     const dbReadDurationMs =
       Math.round((performance.now() - dbReadStartedAt) * 10) / 10;

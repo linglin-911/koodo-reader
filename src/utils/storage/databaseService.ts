@@ -4,6 +4,7 @@ import localforage from "localforage";
 import SqlUtil from "../file/sqlUtil";
 import { ConfigService } from "../../assets/lib/kookit-extra-browser.min";
 import { LocalFileManager } from "../file/localFile";
+import { DatabaseReadContext, invokeMeasuredDatabaseRead } from "./databaseDiagnostics";
 declare var window: any;
 
 class DatabaseService {
@@ -278,20 +279,22 @@ class DatabaseService {
   }
   static async getRecordsByBookKey(
     bookKey: string,
-    dbName: string
+    dbName: string,
+    diagnosticContext?: DatabaseReadContext
   ): Promise<any[]> {
     if (isElectron) {
-      let records = await window
-        .electronAPI
-        .invoke("database-command", {
+      return invokeMeasuredDatabaseRead(
+        (channel, command) => window.electronAPI.invoke(channel, command),
+        {
           statement: "getByBookKeyStatement",
           statementType: "string",
           executeType: "all",
           dbName: dbName,
           data: bookKey,
           storagePath: getStorageLocation(),
-        });
-      return records;
+        },
+        diagnosticContext
+      );
     } else {
       let records = await this.getAllRecords(dbName);
       return records.filter((record) => record.bookKey === bookKey);
