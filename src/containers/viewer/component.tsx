@@ -206,20 +206,28 @@ const Viewer = (props: ViewerProps) => {
         chapterIndex: stateRef.current.chapterDocIndex,
       })}`
     );
+
+    const dbReadStartedAt = performance.now();
     let highlighters: any = await DatabaseService.getRecordsByBookKey(
       propsRef.current.currentBook.key,
       "notes"
     );
+    const dbReadDurationMs =
+      Math.round((performance.now() - dbReadStartedAt) * 10) / 10;
+
     if (!highlighters) {
       console.info(
         `[DIAG][Reader] restoreHighlights:skip ${JSON.stringify({
           traceId,
           reason: "no-note-records",
+          dbReadDurationMs,
           durationMs: Math.round((performance.now() - startedAt) * 10) / 10,
         })}`
       );
       return;
     }
+
+    const filterStartedAt = performance.now();
     let highlightersByChapter = highlighters.filter((item: Note) => {
       let cfi = JSON.parse(item.cfi);
       if (cfi.cfi) {
@@ -235,8 +243,13 @@ const Viewer = (props: ViewerProps) => {
         return item.chapterIndex === stateRef.current.chapterDocIndex;
       }
     });
+    const filterDurationMs =
+      Math.round((performance.now() - filterStartedAt) * 10) / 10;
     const chapterNoteCount = highlightersByChapter.length;
+
+    let normalizeDurationMs = 0;
     if (propsRef.current.currentBook.format === "PDF") {
+      const normalizeStartedAt = performance.now();
       highlightersByChapter = highlightersByChapter.map((item: Note) => {
         let cfi = JSON.parse(item.cfi);
         if (cfi.fingerprint) {
@@ -248,14 +261,26 @@ const Viewer = (props: ViewerProps) => {
 
         return item;
       });
+      normalizeDurationMs =
+        Math.round((performance.now() - normalizeStartedAt) * 10) / 10;
     }
+
+    const renderStartedAt = performance.now();
     await rendition.renderHighlighters(highlightersByChapter, handleNoteClick);
+    const renderDurationMs =
+      Math.round((performance.now() - renderStartedAt) * 10) / 10;
+
+    let pdfAdjacentNoteCount = 0;
+    let pdfAdjacentFilterDurationMs = 0;
+    let pdfAdjacentNormalizeDurationMs = 0;
+    let pdfAdjacentRenderDurationMs = 0;
     if (
       isReadingRawPDF(propsRef.current.currentBook) &&
       (propsRef.current.readerMode === "double" ||
         propsRef.current.readerMode === "scroll")
     ) {
-      let highlightersByChapter = highlighters.filter((item: Note) => {
+      const adjacentFilterStartedAt = performance.now();
+      let adjacentHighlighters = highlighters.filter((item: Note) => {
         let cfi = JSON.parse(item.cfi);
         if (cfi.fingerprint) {
           // pdf from 1.7.4 or older
@@ -264,8 +289,13 @@ const Viewer = (props: ViewerProps) => {
           return item.chapterIndex === stateRef.current.chapterDocIndex + 1;
         }
       });
+      pdfAdjacentFilterDurationMs =
+        Math.round((performance.now() - adjacentFilterStartedAt) * 10) / 10;
+      pdfAdjacentNoteCount = adjacentHighlighters.length;
+
       if (propsRef.current.currentBook.format === "PDF") {
-        highlightersByChapter = highlightersByChapter.map((item: Note) => {
+        const adjacentNormalizeStartedAt = performance.now();
+        adjacentHighlighters = adjacentHighlighters.map((item: Note) => {
           let cfi = JSON.parse(item.cfi);
           if (cfi.fingerprint) {
             item.chapterIndex = cfi.page - 1;
@@ -276,17 +306,30 @@ const Viewer = (props: ViewerProps) => {
 
           return item;
         });
+        pdfAdjacentNormalizeDurationMs =
+          Math.round((performance.now() - adjacentNormalizeStartedAt) * 10) /
+          10;
       }
-      await rendition.renderHighlighters(
-        highlightersByChapter,
-        handleNoteClick
-      );
+
+      const adjacentRenderStartedAt = performance.now();
+      await rendition.renderHighlighters(adjacentHighlighters, handleNoteClick);
+      pdfAdjacentRenderDurationMs =
+        Math.round((performance.now() - adjacentRenderStartedAt) * 10) / 10;
     }
+
     console.info(
       `[DIAG][Reader] restoreHighlights:complete ${JSON.stringify({
         traceId,
         totalNotes: highlighters.length,
         chapterNotes: chapterNoteCount,
+        dbReadDurationMs,
+        filterDurationMs,
+        normalizeDurationMs,
+        renderDurationMs,
+        pdfAdjacentNoteCount,
+        pdfAdjacentFilterDurationMs,
+        pdfAdjacentNormalizeDurationMs,
+        pdfAdjacentRenderDurationMs,
         durationMs: Math.round((performance.now() - startedAt) * 10) / 10,
       })}`
     );
