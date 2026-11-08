@@ -1,6 +1,6 @@
 # Koodo Reader：项目需求与开发进度
 
-更新：2026-11-08。本文件是当前需求、技术决定和进度的唯一维护依据；实现后在此更新状态与验证结果。**调整后的阶段 6：Worker 后台索引与首次可读优化已实现并通过已覆盖的自动验证**；下一独立阶段为 **7：TXT 一个 iframe 的连续滚动窗口**，尚未启动实现。阶段 1–4 及三项审计补齐已有提交，已测结果与未完成门槛分别记录。历史实现记录不代表当前剩余待办；开发规范见各仓库 `AGENTS.md`。
+更新：2026-11-08。本文件是当前需求、技术决定和进度的唯一维护依据；实现后在此更新状态与验证结果。**调整后的阶段 6：Worker 后台索引与首次可读优化已实现并通过已覆盖的自动验证**；下一独立阶段为 **7：TXT 一个 iframe 的连续滚动窗口**，尚未启动实现。阶段 1–6 的实现及三项审计补齐已有提交，已测结果与未完成门槛分别记录。历史实现记录不代表当前剩余待办；开发规范见各仓库 `AGENTS.md`。
 
 ## 1. 项目范围与环境
 
@@ -41,7 +41,7 @@ node --test test/txt-chapter-index.test.cjs test/chapter-metrics.test.cjs test/p
 yarn.cmd build:desktop
 ```
 
-Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起使用 `yarn.cmd build:desktop`（`scripts/build-desktop.mjs`）同步普通桌面单文件 ES module `src/assets/lib/kookit.min.js` 和无 DOM 的 CommonJS 扫描器 `src/utils/main/txt-scanner.cjs`；不要只构建配置数组第一项后漏掉扫描器。完整 `yarn.cmd build` 也会追加构建扫描器。Koodo 打包 files 已包含主进程 `.js` 和 `.cjs`；真实 ASAR Worker 加载自动验证通过，未运行完整安装包分发。不要为验证桌面功能无故写入移动项目。PowerShell 运行 Electron GUI EXE 自动测试时，应以管道等待结束（如 `& .\node_modules\electron\dist\electron.exe test/txt-index-worker.electron.cjs 2>&1 | Out-Host`），并核对 JSON 报告和退出码，不能把启动成功当测试通过。
+Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起使用 `yarn.cmd build:desktop`（`scripts/build-desktop.mjs`）同步普通桌面单文件 ES module `src/assets/lib/kookit.min.js` 和无 DOM 的 CommonJS 扫描器 `src/utils/main/txt-scanner.cjs`；不要只构建配置数组第一项后漏掉扫描器。完整 `yarn.cmd build` 也会追加构建扫描器。Koodo 打包 files 已包含主进程 `.js` 和 `.cjs`；真实 ASAR Worker 加载自动验证通过，未运行完整安装包分发。不要为验证桌面功能无故写入移动项目。PowerShell 运行 Electron GUI EXE 自动测试时，应以管道等待结束（如 `& .\node_modules\electron\dist\electron.exe test/txt-index-worker.electron.cjs 2>&1 | Out-Host`），并核对 JSON 报告和退出码，不能把启动成功当测试通过。现有多个隐藏 Electron/Vite 界面脚本共享同一 checkout 的依赖优化缓存，应串行运行（或显式配置隔离 cacheDir），避免缓存重建导致测试模块动态导入失败；遇到此类导入失败应先核查测试服务缓存，不能仅凭该现象归因为应用逻辑。
 
 ## 2. 当前进度
 
@@ -59,9 +59,11 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 | 连续章节窗口 | 下一独立阶段为 7；阶段 7–9 窗口/交互/生命周期仍待实现 |
 | 阶段 4：Note 实体、三类绑定与备份恢复 | 主体功能及原子创建/原选文 UI/新链路诊断已实现并自动验证；实书全矩阵及 changes/新版云安排仍待后续（见 6.1） |
 
-最近实现基线：本次阶段 6 在 Koodo `3f7be26e` / Kookit `49e8972` 上继续；Kookit 阶段 6 提交为 `18e9f39`，Koodo 阶段 6 见当前阶段提交。开始时两库均为 `diagnostics/phase1-logging` 且干净；刷新 origin 后分别领先 10 / 6 个本地提交、落后均为 0，保留全部原提交；本阶段只本地提交，不推送。交接仍以实际 Git HEAD/工作区/远程差异为准。
+最近功能基线：Koodo `47bfcd88`、Kookit `18e9f39`（阶段 6）；此前阶段 5 为 Koodo `3f7be26e` / Kookit `49e8972`。本次文档核对前两库均为 `diagnostics/phase1-logging`、工作区干净；刷新 origin 后分别领先 11 / 7 个提交、落后均为 0。全部本地成果保留、尚未推送；文档整理提交会使 Koodo HEAD 继续前进，后续交接必须核对实际 HEAD/工作区/远程差异，不能把功能基线当作当前 HEAD。
 
-最近实现验证：阶段 6 Koodo Vitest 14 项、新旧主进程诊断 7 项、原生索引 22 项、Worker/ASAR/故障矩阵 17 项、原生批注 21 项、真实隐藏 Electron 目录界面 12 项、批注界面 18 项、Worker 进度/临时首屏/导入链 8 项，以及冷/热正常编译引擎阅读、Koodo 类型检查及生产构建通过；Kookit 41 项 TXT 回归、类型检查、仅桌面及纯扫描器构建通过。SqlStatement 冒烟沿用阶段 4 已测记录，本轮未重跑。分阶段数字和基准为各阶段当时的记录，不是当前测试总数；不把自动合成数据验证等同实书验收。
+最近实现验证：阶段 6 Koodo Vitest 14 项、新旧主进程诊断 7 项、原生索引 22 项、Worker/ASAR/故障矩阵 17 项、原生批注 21 项、真实隐藏 Electron 目录界面 12 项、批注界面 18 项、Worker 进度/临时首屏/导入链 8 项，以及冷/热正常编译引擎阅读、Koodo 类型检查及生产构建通过；Kookit 41 项 TXT 回归、类型检查、仅桌面及纯扫描器构建通过。SqlStatement 冒烟沿用阶段 4 已测记录，本轮未重跑。分阶段数字和基准为各阶段当时的记录，不是当前测试总数；不把自动合成数据验证等同实书验收。本次只核对源码、文档和 Git 状态，未重新运行程序测试；上述成绩沿用阶段 6 功能提交时的验证记录。
+
+以下阶段 1–5 的过程和数字保留为历史记录；涉及已由后续阶段替换的路径时明确注明。当前链路见第 3 节，剩余工作见 6.1 与 6.3，不按历史“待后续实现”重新开工。
 
 ### 阶段 1 实现与验证
 
@@ -79,17 +81,17 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 - Kookit 源码提交：`385312c`。桌面产物已重新编译接入普通入口；本阶段只提交当前分支，不推送，保留全部阶段 1 本地提交。
 - 阶段 2 建立的索引 DDL 位于现有 `notes.db`：`txt_index_schema`（独立版本 1，不挪用旧 `user_version`）、`txt_index_documents`（活动代/文档版本）、`txt_index_generations`（building/ready、元数据与索引头）、`txt_index_chapters`（章节 ID、顺序、名称、两套 start/end/bodyStart、首尾特征、行数、进度权重及识别类型）。物理大小由 byteEnd-byteStart 得到；不存原文/HTML；阶段 2 当时未改旧 Note 表，当前正式实体结构见阶段 4。
 - 首次新增表前使用 SQLite online backup 保存包含 WAL 已提交数据的一致 `notes.db.pre-txt-index-v1-<UUID>.bak`；迁移本身为版本化事务，错误上抛并回滚。连接按真实 config 目录下的数据库绝对路径缓存，兼容 Windows 大小写及自定义存储目录。当前连接入口对已有 `annotation_schema` 的正式库跳过旧 Note 字段迁移，其余旧表处理保持原样。
-- 索引操作统一走 `database-command` 的 `operation: "txt-index"`，限定 notes 库；当前受控动作是 open、commit、read-source、read-chapter、close、invalidate（阶段 3 已扩充读取/生命周期动作）。主进程选择书库原文件优先、外部路径其次；通过同类原生文件描述符读取 realpath/dev/ino、size、mtimeNs/ctimeNs，检查读取前后及路径替换。修复 Electron Windows `statSync.dev=0` 与 fstat 不一致的问题。
+- 索引操作统一走 `database-command` 的 `operation: "txt-index"`，限定 notes 库；阶段 2/3 的动作包括 open、commit、read-source、read-chapter、close、invalidate；阶段 5 已新增 read-directory，阶段 6 已新增 prepare、build-status、read-preview、cancel-build，完整现行链路见第 3 节。主进程选择书库原文件优先、外部路径其次；通过同类原生文件描述符读取 realpath/dev/ino、size、mtimeNs/ctimeNs，检查读取前后及路径替换。修复 Electron Windows `statSync.dev=0` 与 fstat 不一致的问题。
 - 有效性契约包含实际文件身份、首/中/尾至多各 4096 字节的 `sha256-3x4096-v1` 采样指纹、编码/BOM、四类版本和解析配置 SHA-256 摘要。指纹只散列采样，不无条件计算整书哈希；元数据被保留且改动避开采样区仍可能漏检，完整校验/手动重建 UI 留在阶段 10。
 - 所有坐标均为半开区间。byte 坐标相对物理文件，跳过文件头 BOM；UTF-16 坐标按仅去文件头 BOM、CRLF/CR→LF 的文本计算。章节间换行归属沿用阶段 1：下一节前的分隔换行不纳入上一节区间。正文起点在标题行换行后；前言/固定块从 section 起点开始。正文特征 v1 跳过空白首行，从首个非空白正文行提取前两个非空白 Unicode 码点；末尾特征取整个正文最后两个非空白码点，均不拆代理对。
 - 支持 UTF-8、GBK/GB18030、UTF-16LE/BE，并兼容 ASCII 对应的 Windows-1252；BOM 优先。其他旧编码明确走原有内存解析路径，不声称命中持久索引；非法字节序列拒绝持久化。目录章/无标题前言/500 行 fallback 均保留。
-- 扫描、坐标验证、采样比对在事务外；批量插入 building 代、ready 状态和活动代切换在同一原子事务完成，带旧活动代比较，避免并发覆盖。失败不替换旧索引、不删除笔记；当前保留活动/上一 ready 代、活跃阅读会话固定的代及未解绑正式关系引用的代（阶段 3/4 已补齐会话与绑定感知保留）。损坏的索引 JSON 当缓存未命中重建。
-- 阶段 2 的整书 loader 过渡路径已由阶段 3 的目标章随机读取替换；普通桌面 TXT 不再读旧 ZIP，也不再自动生成 TXT HTML ZIP。当前冷建/热开及导入时机见阶段 3 与 6.1，原文不可用时不能拿 ZIP 冒充可索引原文件。
+- 阶段 2 的扫描、坐标验证、采样比对在事务外，批量插入 building、ready/active 切换在一个事务完成。阶段 6 的正常 Worker 路径已改为 building 分批事务写入，最终单独以短事务原子发布 ready/active，并继续带旧活动代比较；旧 commit 适配器仍保留。失败不替换旧索引、不删除笔记；当前保留活动/上一 ready 代、活跃阅读会话固定的代及未解绑正式关系引用的代（阶段 3/4 已补齐会话与绑定感知保留）。损坏的索引 JSON 当缓存未命中重建。
+- 阶段 2 的整书 loader 过渡路径已由阶段 3 的目标章随机读取替换；普通桌面 TXT 不再读旧 ZIP，也不再自动生成 TXT HTML ZIP。当前冷建/热开及导入后台任务见阶段 6、第 3 节与 6.1，原文不可用时不能拿 ZIP 冒充可索引原文件。
 - 诊断分开记录源文件读取/校验、连接/迁移、SQLite 加载/验证、批量提交、Renderer IPC 往返、整书解码和索引命中；不记录路径、摘录或笔记正文。
 - **自动验证通过**：Kookit 29 项、主进程诊断 5 项、Koodo Vitest 6 项、两库类型检查、桌面引擎及 Koodo 生产构建；原生 SQLite 16 项覆盖 WAL 一致备份、迁移失败回滚、持久热命中、编码/配置/版本/文件变化失效、实际路径优先级、坏坐标/跨 Renderer 票据拒绝、批量失败/并发保护、目录隔离和缓存损坏。原真实 SqlStatement 保存/读取冒烟仍通过。
 - **自动阅读回归通过**：独立资料目录中的隐藏 Electron，通过普通编译引擎 + 实际宿主适配器 + IPC 验证冷/热挂载、目录跳转、正文选文及阅读位置恢复。阶段 4 已补充原菜单/批注/重叠高亮的合成自动回归；真实主样本、原生复制及完整 UI、长时间阅读与内存稳定性仍待测。该阶段测试仅使用隔离资料库。
 
-阶段 2 历史合成基准：`test/txt-index-benchmark.electron.cjs <Kookit源码路径> <报告JSON路径>`，两份生成 TXT 均为 7,700 章。以下为当时整书 loader 下的一次隔离 Electron 主进程内引擎/SQLite 测量，不代表当前热开耗时；当前随机读取测量见阶段 3。**不是主样本、首屏或完整 UI 性能验收**；读取/SQL 与 parse 分列，parse 仍含整书解码/规范化，冷 parse 另含扫描/提交。
+阶段 2 历史合成基准：`test/txt-index-benchmark.electron.cjs <Kookit源码路径> <报告JSON路径>`，两份生成 TXT 均为 7,700 章。以下为当时整书 loader 下的一次隔离 Electron 主进程内引擎/SQLite 测量，不代表当前热开耗时；阶段 3 随机读取和阶段 6 Worker 各自的测量见对应历史记录，不能跨版本/缓存状态直接比较。**不是主样本、首屏或完整 UI 性能验收**；读取/SQL 与 parse 分列，parse 仍含整书解码/规范化，冷 parse 另含扫描/提交。
 
 | 合成物理大小 | 冷 open / parse | 热 open / parse | 热 SQLite 加载及验证 | 批量事务 | 冷 / 热章节扫描次数 |
 |---|---|---|---|---|---|
@@ -103,13 +105,13 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 - Kookit 源码提交：`3bd7455`；桌面单文件产物已同步普通入口。索引坐标/解析契约和 DDL 沿用阶段 2 的版本 1，已有有效缓存可直接热打开，无需全部重建。
 - 支持编码的 open 只做文件身份/采样校验及 SQLite 索引加载，不返回原书 buffer；`TxtRender` 持有空 buffer，目录构建不读取章节正文。进入目标章时通过同一受控 `database-command` 的 read-chapter，按票据、可读代、章 ID/顺序和章内字节范围校验，每次最多 256KiB。主进程只读目标物理范围，读取前后核对实际文件身份/采样；失效新会话没有可读旧代，源变化则拒绝旧偏移。
 - Renderer 对章节块使用有状态 TextDecoder，保留 UTF-8/GBK/GB18030/UTF-16LE/BE 的跨块字符与代理对，忽略文件 BOM 的处理只发生在建索引时；章节解码保留字面 U+FEFF，拼接后统一 CRLF/CR→LF，并校验规范化 UTF-16 长度。ASCII/Windows-1252 同样走随机路径；其余旧编码保留原内存适配，不宣称零整书读取。
-- 首次/失效/显式刷新仍通过 read-source 临时整书读取、解码和建索引，扫描结束仅返回轻量元数据，随后正文走随机路径；临时 buffer/全文字符串不进入 rendition、章节 loader 或宿主会话。复制索引元数据字符串，避免 V8 的章节名子串间接保留整书。**冷重建的峰值内存和同步扫描尚未消除，后台/流式扫描留在阶段 6。**
+- **阶段 3 当时的过渡路径：** 首次/失效/显式刷新通过 read-source 临时整书读取、解码和建索引，扫描后仅保留轻量元数据；复制元数据字符串，避免章节名子串间接保留整书。**该正常桌面冷建路径已由阶段 6 的有界 Worker 流式扫描替换**，不再是当前剩余实现项；旧适配器分支仍保留，实际内存稳定性仍须按最终矩阵验证。
 - 桌面 TXT 导入不再执行自动 HTML ZIP 预缓存；手动/批量预缓存准备 SQLite 索引，已有 ZIP 不会绕过新阅读路径，也不据此跳过索引准备。清除缓存失效活动指针，不删除原文或笔记；已打开读者固定自己的不可变索引代，可继续读取。重建保留活动/上一代、会话固定代及未解绑正式绑定引用代；关闭源/Renderer 销毁仅解除会话固定，下次重建只能清理无剩余引用的旧缓存代。最多 128 个源会话，不以停留一页的时长过期，不长期持有文件句柄。
 - 同章重复生成的 Blob 会替换旧 URL，提供 section unload 与关书 destroy；这只是本阶段所需释放，尚不宣称跨章 DOM/Blob/LRU 已有完整预算。**超大单章仍整章组装正文，连续章节窗口/章内分块属于阶段 7，完整生命周期与长期预算属于阶段 9。**
 - **自动验证通过**：Kookit 33 项、Koodo Vitest 8 项、主进程诊断 5 项、原生 SQLite 21 项、旧真实 SqlStatement 保存/读取冒烟、两库类型检查、桌面引擎与 Koodo 生产构建。覆盖热开有界采样/无 buffer、仅目标章读取、跨 IPC 边界的多字节/代理对/CRLF、坏范围/截断/非法编码拒绝、文件覆盖后拒用旧偏移、显式刷新及失败保留、同 Renderer 预缓存与阅读并存、多次清缓存重建仍可读取固定旧代、关闭/销毁释放票据。
 - **自动阅读回归通过**：隐藏 Electron 使用普通编译引擎、真实宿主适配和 IPC，冷/热挂载、选文、目录跳转、阅读位置恢复均通过；热开实际 read-source 调用为 0。预缓存与清缓存后仍可切章。测试仅使用隔离资料目录及合成原文，没有打开、迁移或删除用户真实数据库。后续阶段 4 已补充原菜单/批注/重叠高亮自动检查；真实主样本上的完整 UI/原生复制及长期内存仍待测。
 
-更新后的合成基准脚本仍为 `test/txt-index-benchmark.electron.cjs`，每份 7,700 章；以下为一次引擎/SQLite 进程内测量，非真实小说首屏，也不包含完整 Renderer IPC/iframe 挂载。零全文读取/扫描和仅目标章读取均有断言；内存快照含 GC 与冷重建残留，不能据此证明稳定 RSS。
+阶段 3 当时更新的历史合成基准脚本为 `test/txt-index-benchmark.electron.cjs`（当前已标记为旧适配器基准，不代表 Worker 正常入口），每份 7,700 章；以下为一次引擎/SQLite 进程内测量，非真实小说首屏，也不包含完整 Renderer IPC/iframe 挂载。零全文读取/扫描和仅目标章读取均有断言；内存快照含 GC 与冷重建残留，不能据此证明稳定 RSS。
 
 | 合成大小 | 冷 open / prepare | 热 open / prepare | 热整书读取 / 索引扫描 | 第 1/1600/6800 章范围读取总量（含标题） | 深章读取+HTML/Blob |
 |---|---|---|---|---|---|
@@ -130,12 +132,12 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 
 ### 阶段 4 审计补齐（2026-11-08）
 
-- 补齐提交为 Koodo `dfd9c8ee`，基于 `0dcde771` 实施且只修改 Koodo；Kookit 源码/普通入口编译产物仍为 `96effc1` + `06961be`。不追加 Schema 迁移，不清理或重建已有正式批注。
+- 补齐提交为 Koodo `dfd9c8ee`，基于 `0dcde771` 实施且只修改 Koodo；Kookit 源码/普通入口编译产物仍为 `96effc1` + `06961be`。该次审计不追加 Schema 迁移，不清理或重建已有正式批注；后续阶段 5/6 的引擎提交另见对应记录。
 - 新增受控 `annotations/create`：字段及锚点/文件读取在事务外验证，事务内复核活动代后一次插入实体与初始绑定。选文“确认”、纯高亮及有选区的新建编辑器均走此动作；不再先 save 后 bind。无绑定实体仍可显式 save。非法锚点、验证后代变化、绑定 INSERT 故障均不会留下实体；失败保留当前编辑器正文，可重试。
 - 小批注默认弹窗恢复原摘录、`.note-editor`/`.editor-box`、NoteTag、ColorOption、“复制摘录/取消或删除/确认”和 Ctrl+Enter；确认成功关闭，正文编辑不重建绑定，颜色只作用于当前绑定。新增“管理绑定”为显式操作；三类工作区保留独立编辑流程。默认笔记/高亮页恢复原标签/书籍筛选与卡片列表，“批注”按钮才进入三类工作区，可返回；无绑定/待处理卡片不执行无效原文跳转。保存迟到回调不会关闭后来打开的弹窗。
 - `annotation-diagnostics.js` 按请求包装 SQLite 连接/statement，不修改共享连接；所有新批注 IPC 自动产生 requestId，阅读恢复带 rendition traceId。分别计 registry、连接、迁移、原文/索引验证、prepare、执行/行物化、输入/输出转换及主进程总耗时；返回轻量诊断 envelope，Renderer 解包并记往返/本地处理/传输调度残差。阶段计时可为 0；首次迁移独立归入 migration，事务控制及其他调度仍包含在总耗时中，残差不是精确序列化计时。日志不含 SQL、参数、路径、摘录、正文或错误文本，日志异常不影响读写。
 - **自动验证通过**：原生批注 21 项（新增原子创建、失败/代竞争回滚与真实 SQLite 计时），真实 Electron 界面 18 项（含 StrictMode；新增原菜单原外壳、失败重试保留正文、Ctrl+Enter、取消/删除/确认关闭、旧卡片列表与独立工作区、端到端 request/trace 对应），Renderer 无错误；原外壳及管理页截图已核对。Vitest 10 项、主进程新旧诊断 7 项、原生索引 21 项、冷/热正常编译引擎阅读和真实 SqlStatement 冒烟、Koodo 类型检查及生产构建通过。故障注入产生的预期 SQLite 异常仅发生于隔离临时资料库，未打开用户真实库。
-- `dfd9c8ee` 仅闭合三项已确定的实现偏差；完整规模矩阵、阶段 2/3 欠项、changes/新版云契约和真实小说长时间/全格式手动验收仍保留。不能由本轮检查推断历史 96.7s 根因已修复，或阶段 5–11 已完成。
+- `dfd9c8ee` 当时仅闭合三项已确定的实现偏差，未完成当时后续阶段。其后阶段 5/6 已落地，阶段 2/3 的流式冷建、导入后台索引和异步 I/O 已补齐；剩余专项门槛以 6.1 为准。完整规模矩阵、changes/新版云契约、实书长时间/全格式手动验收及历史 96.7s 根因仍待处理，不能由审计或后续少量测试推断全部完成。
 
 ### 阶段 5 实现与验证
 
@@ -146,12 +148,12 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 - **自动验证通过：** Koodo 12 项 Vitest、7 项主进程诊断、22 项原生索引（新增目录零源文件读取/票据隔离/固定代/close 与 owner 释放）、21 项原生批注；Kookit 34 项 TXT 回归和两库类型检查、桌面引擎/Koodo 生产构建。生产构建仍有原有外部 script、eval、locale 混合导入和大包警告。
 - **真实界面自动验证通过：** 新脚本 `test/txt-directory.electron.cjs` + 合成 7,700 章 + 隔离 SQLite/IPC + 普通编译引擎，12 项检查包含快速/深位滚动、1→500→6800 章跳转、搜索/IME、重新打开、即时红标、长标题、页码更新不回跳、锁释放和 TXT/EPUB 回退。600px 容器本次最多挂载 27 行；目录滚动/搜索/重开正文读取为 0；深跳仅读目标 `[0,499,6799]`，不读中间章。对正文源 `fs.readSync` 的故障注入未影响目录查询；截图已人工查看，长中文标题省略和红标正常。
 - **测量边界：** 同一隐藏 Electron、已建索引的合成目录，20 次交替唯一标题输入至结果 DOM 匹配的本次 P95 约 4.1ms（轮询间隔 20ms，允许同步提交，非绘制/原生输入延迟指标）。它只说明本次局部结果，不代表 72.6MiB/100MB 实书首屏或完整性能矩阵。冷/热开书、深跳、原文选文/进度恢复及原菜单/笔记弹窗/交叠高亮的 18 项批注界面回归均通过；未打开或迁移用户真实书库。
-- **后续门槛：** 实书目录/输入响应和原生滚轮手动体验仍待测；阶段 6 的冷建流式扫描、导入任务、Worker 与异步文件 I/O，阶段 7–11 的窗口/交互/资源/恢复/压力矩阵及既有遗留项均继续保留。本阶段不把合成界面回归写成全项目验收完成。
+- **后续门槛：** 实书目录/输入响应和原生滚轮手动体验仍待测。阶段 5 结束时列入后续的冷建流式扫描、导入任务、Worker 与异步 I/O 已由阶段 6 实现；阶段 7–11 的窗口/交互/资源/恢复/压力矩阵及 6.1 中剩余专项继续保留，不把合成界面回归写成全项目验收完成。
 
 ### 阶段 6 实现与验证
 
 - **扫描与兼容：** Kookit `txtStreamIndex.ts` 是纯数据扫描器，通过异步字节块单次物理遍历同时计算 LF 规范化 UTF-16 / byte 双坐标、标题/前言/500 行兜底、空标题降级、行数/权重和正文首尾特征。不积攒全文或全部章节；保留有界行探针及当前章节摘要。与原 v1 构建器对照覆盖 UTF-8、GBK/GB18030、UTF-16LE/BE、Windows-1252、BOM、CRLF/CR、1-byte 块、代理对、超长默认正文行及随机行边界；原 v1 契约/Schema 不变，旧有效缓存直接热开。
-- **任务与背压：** 复用 `database-command / txt-index`，增加 prepare、build-status、read-preview、cancel-build；票据/owner/storagePath 保护沿用。按数据库、书籍、源身份/配置和基代合并同书任务；全局一个活动 Worker、最多 16 个合并任务。每次读至多 256KiB，元数据批次最多 128 行并有大小预算，主进程确认一批后 Worker 才继续。取消只释放本消费者；最后消费者退出/Renderer 销毁才终止任务。已取消排队项及时移除，异步 open 期间已销毁 owner 不登记迟到票据。无 ready 命中才准备；普通切章不启动扫描 Worker。
+- **任务与背压：** 复用 `database-command / txt-index`，增加 prepare、build-status、read-preview、cancel-build；票据/owner/storagePath 保护沿用。按数据库、书籍、源身份/配置和基代合并同书任务；全局一个活动 Worker、最多 16 个合并任务。每次读至多 256KiB，元数据批次最多 128 行并有大小预算，主进程确认一批后 Worker 才继续。取消只释放本消费者；最后消费者退出/Renderer 销毁才终止任务。已取消排队项及时移除，异步 open 期间已销毁 owner 不登记迟到票据。普通开书在有效缓存未命中时准备；显式刷新也可要求重建。热命中和普通切章不启动扫描 Worker。
 - **数据库与失败：** Worker 不连接 SQLite。主进程按批事务写 building 代，必要时丢弃暂存 fallback 行切换标题模式；扫描完成、源身份/采样复核及完整元数据验证后，在短事务中 ready/active 原子切换，复用原 CAS、正式绑定 pending/快照保留和引用代 GC。失败/取消清理本次 building；下一任务清理同书中断残留 building，不清 ready、原文或正式数据。Worker 异常或退出、CPU 无进展超时、迟到批次、SQL 失败、竞争切代均不覆盖旧活动代；异步批次故障后不能写入孤立章节。未实现阶段 10 自动恢复。
 - **异步 I/O：** `txt-source.js` 中生产 open/身份与采样校验、章节/预览范围读取及批注验证使用 `fs.promises` / FileHandle.read/stat/close；每次范围读取前后保持实际文件身份与采样验证。同步 inspect 仅保留为旧测试/适配器接口，正常 Reader 不调用。旧 read-source/内存构建器保留给旧宿主/历史基准，普通支持编码桌面路径不经整书 IPC；`test/txt-index-benchmark.electron.cjs` 已标为历史阶段 3 适配器基准，当前 Worker 指标使用新脚本。
 - **首屏/交互：** Viewer/导入结束接通准备协议。导入仅串行排队书籍元数据，写完原文件和 books 记录后启动后台索引；不追加原文副本/HTML ZIP。Viewer 展示进度、取消/重试；首个已确认范围可按原文件随机读最多 256KiB，显示可选文复制的**临时文本预览**，不冒充完整 rendition/目录，不注册正式选文绑定。完整 ready 后才挂载普通引擎、开放全目录、恢复原深位置；无有效索引时仍等待完整扫描。临时预览可能是前言或首节片段，超大首章不会承诺立即完整可读；真正章内窗口属于阶段 7。
@@ -165,12 +167,13 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 
 | 层 | 关键文件/职责 |
 |---|---|
-| Koodo 主进程 | `main.js`：文件桥、`database-command`、better-sqlite3/WAL |
+| Koodo 主进程 | `main.js`、`txt-index-store.js`、`txt-index-tasks.js`、`txt-source.js`：受控 IPC、任务、异步源读取、better-sqlite3/WAL |
+| 索引 Worker | `txt-index-worker.js` + Kookit 构建的 `txt-scanner.cjs`：纯流式扫描，不连接 SQLite |
 | Koodo 渲染进程 | viewer、`DatabaseService`、Zustand `useAppStore`、原生菜单/弹窗 |
-| Kookit 源码 | `TxtRender.ts`、`libs/textProcessor.ts`、`libs/html.ts`、`generalParser.ts`、`navigationUtil.ts`、`layoutUtil.ts` |
+| Kookit 源码 | `TxtRender.ts`、`libs/txtIndex.ts`、`libs/txtStreamIndex.ts`、`libs/textProcessor.ts`、`libs/html.ts`、`generalParser.ts`、`navigationUtil.ts`、`layoutUtil.ts` |
 | Kookit-extra | 现有 SqlStatement/配置/同步工具；本地可读源码未找到，不读取压缩产物理解实现 |
 
-当前桌面 TXT 正常链路：`viewer → database-command(open) → 有界实际文件身份/采样校验 → notes.db 索引 → sections/toc → 目标章受控字节范围读取 → 章节流式解码/统一 LF → HTML/Blob → iframe`。只在缓存失效时临时 read-source 全文建索引并 commit；Web/无持久化适配及未支持编码继续走内存解析。
+当前支持编码的桌面 TXT 正常链路：`viewer → database-command(open) → 异步实际文件身份/有界采样校验 → notes.db 有效索引命中 → sections/toc → 目标章受控异步字节范围读取 → 章节流式解码/统一 LF → HTML/Blob → iframe`。缓存缺失/失效或显式刷新时，`prepare → 合并任务/Worker 单次流式扫描 → 主进程 building 批次 → 验证与 CAS 原子发布 ready/active → 返回轻量索引`；期间可显示临时文本预览，正式目录及深位置恢复等待 ready。导入持久化书籍后也后台调用准备服务。普通支持编码桌面路径不调用 read-source 或传输整书；Web/无新宿主协议及未支持编码仍保留旧内存适配。
 
 当前实现与仍待处理的约束：
 
@@ -193,9 +196,9 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 - 元数据至少包括 book_id、实际文件身份、大小/mtime、采样指纹及算法、编码/BOM、parser_version、index_version、规范化/特征版本、解析配置摘要、indexed_at、document_revision、active generation。
 - 章节至少包括 chapter_id、book_id、generation、chapter_index/name、起止及正文起始的 byte/UTF-16 两套偏移、first_chars、last_chars、行数、大小及识别类型。章 ID 与顺序分离；无批注章不要求跨重建保留 ID。
 - 字节区间相对物理文件，文本区间按去文件头 BOM、CRLF/CR→LF 后的 UTF-16 单元计数，均为半开区间；显式处理 UTF-8、GBK、UTF-16LE/BE、块边界、多字节/代理对、空行和尾换行。
-- first_chars 取正文首行前两个非空白字符，last_chars 取正文末尾最后两个非空白字符，不含标题，不足两字取实际字符；按完整 Unicode 码点提取，避免拆分代理对。空白首行的具体处理固定并版本化，不能跨实现漂移。
+- 特征 v1：first_chars 跳过空白正文行，在首个非空白正文行取前两个非空白 Unicode 码点；last_chars 取整个正文最后两个非空白码点。不含标题，不足两个码点取实际值，避免拆分代理对。空白行和码点规则已固定在原 v1/流式扫描器对照测试中，不能跨实现漂移。
 - 文件/编码/解析配置/版本变化或手动强制重建时才扫描。采用 building/ready 代及短事务切换，扫描/正文匹配在事务外完成；失败保留旧索引和全部批注。旧文件已被覆盖时不可用旧字节偏移读取新文件。
-- 采样校验不能保证检测到元数据被保留且修改发生在未采样区的情况；提供手动完整校验/重建，不宣称抽样等于完整内容证明。
+- 采样校验不能保证检测到元数据被保留且修改发生在未采样区的情况；阶段 10 仍须提供面向用户的手动完整校验/安全重建入口（尚未实现），不宣称现有抽样等于完整内容证明。内部显式刷新协议不等于完整校验 UI 已完成。
 - 首版不要求整章 BodySha256、章节相似度、段落 diff 或任意拆章/合章自动迁移。
 
 ## 5. 三类批注与绑定
@@ -219,6 +222,8 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 
 ### 文件变化后的恢复
 
+以下是**阶段 10 尚未实现的目标**；当前重建保留旧快照/正文并把旧有效关系转为 pending，仅保留已有手动绑定能力，不执行下述自动恢复。
+
 重新索引仍扫描全书，但只对未解绑绑定引用的旧章节做身份恢复，只读取相关候选章正文；无批注书籍直接重建。
 
 1. 小批注：章名匹配 + 原文摘录存在才确认；章名不匹配时要求正文首尾特征同时匹配，并仍须找到摘录。重复原文用上下文/相对位置消歧；无法唯一确认则待处理，找不到原文则失效。
@@ -230,11 +235,11 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 
 ## 6. 完整阶段计划与实施偏差
 
-以下保留 11 阶段的完整工作与验收要求，并按 2026-11-08 用户决定调整后续执行顺序（映射见 6.3）。仓库/链路、迁移、步骤、验收、收益和风险/回滚要求继续作为基准，不能只保留一行阶段摘要。下文“拟新增”文件/表名与 M1–M4 是原设计称呼，不代表已实现；当前实际 DDL/接口见第 2–5 节。验收目标与已测成绩严格区分，成绩只在第 2 节登记。
+以下保留 11 阶段的完整工作与验收要求，并按 2026-11-08 用户决定调整后续执行顺序（映射见 6.3）。仓库/链路、迁移、步骤、验收、收益和风险/回滚要求继续作为基准，不能只保留一行阶段摘要。以下阶段计划保留各阶段改造前基线及原验收要求，不把阶段 1–6 已实现内容重新列为待开发；“拟新增”文件/表名与 M1–M4 是原设计称呼，不能用来推断文件是否仍待创建，当前实际 DDL/接口见第 2–5 节。验收目标与已测成绩严格区分，成绩只在第 2 节登记。
 
 ### 6.1 实现核对（2026-11-08）
 
-初次审计基线：Koodo `31e15ac6`，Kookit `96effc1` + `06961be`。`dfd9c8ee` 依据审计文档提交 `0dcde771` 补齐原子创建、原选文 UI 和新链路诊断，以下更新为补齐后的当前状态。总体架构保持原方向，后续阶段顺序按 6.3 调整；已覆盖自动检查通过**不等于旧计划的全部验收已完成**；保留完整原要求，不把现状反向改写成原要求。
+初次审计基线：Koodo `31e15ac6`，Kookit `96effc1` + `06961be`。`dfd9c8ee` 依据审计文档提交 `0dcde771` 补齐原子创建、原选文 UI 和新链路诊断，下表已继续同步阶段 5/6 的实际完成项及尚未覆盖门槛。总体架构保持原方向，后续阶段顺序按 6.3 调整；已覆盖自动检查通过**不等于旧计划的全部验收已完成**；保留完整原要求，不把现状反向改写成原要求。
 
 | 对照项 | 当前实际与源码依据 | 判定 / 后续要求 |
 |---|---|---|
@@ -243,7 +248,7 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 | 阶段 2 冷建扫描 | 桌面 `prepareTxtIndex` 优先调用宿主 prepare；纯流式扫描器由 Worker 从源文件分块读取，边扫描边产出坐标/特征 | **阶段 6 已补齐单次物理流式扫描。** 旧 readSource 分支仅用于无新宿主协议的适配；不能把默认旧基准当当前正常路径 |
 | 阶段 2 导入时机与失效控制 | 导入持久化原文件/书籍后串行后台准备索引，读者同书任务合并；building 批次、ready/active CAS 发布、取消/崩溃清理及残留回收已接通 | **阶段 6 已接通后台时机与执行器。** 已测 Worker 退出/SQL 注入失败/合成 building；真实硬中断、磁盘写失败及旧备份回退专项仍须补，不以合成测试全部代替 |
 | 阶段 3 范围读取 | 生产 source inspect/范围读取及绑定校验采用异步 FileHandle，单次章节 IPC ≤256KiB，Renderer 有状态解码 | **阶段 6 已补齐实际异步文件 I/O。** 超大单章依然最终整章组装，仍待阶段 7 块窗口 |
-| 阶段 3 原文缺失与编码降级 | `openPersistentTxt` 对不支持的持久编码可回旧内存路径；`resolveSource` 找不到原文直接抛错 | 原文不可用时尚无计划中的明确兼容状态/降级入口。不能用不可信旧偏移或旧 ZIP 静默代替原文；若无法安全降级，应提供明确不可读状态/重新定位原文入口 |
+| 阶段 3 原文缺失与编码降级 | 不支持的持久编码仍走旧内存路径；生产 `txt-source.js:resolveSourceAsync` 找不到原文时抛错，Viewer 已显示准备失败/重试 | 阶段 6 已有通用失败提示，但缺少区分原文缺失的专门状态/重新定位入口，不能称原目标完全闭合。继续拒绝不可信旧偏移和旧 ZIP 静默代替；专门状态、定位入口/安全降级仍待实现 |
 | 阶段 4 新实体 + 初始绑定 | 默认选文编辑、纯高亮及带选区的新建调用 `annotations/create`；事务外验锚点，事务内复核有效代并一起插入实体与初始绑定 | **已由 `dfd9c8ee` 补齐。** 非法锚点、有效代竞争、绑定写失败均不留孤立实体，UI 草稿保留可重试；显式无绑定 save 与后续追加/换绑保持独立 |
 | 阶段 4 原 UI | 默认小批注使用 `NativeTextPopup` 恢复原 class/CSS、摘录、正文、标签、颜色、复制/取消/删除/确认及快捷键；默认列表复用原卡片，“管理绑定”/“批注”分别进入新增管理能力 | **已由 `dfd9c8ee` 补齐原入口/外壳/交互兼容。** 自动流程、真实渲染与截图通过；三类工作区未删除，绘图仍独立。真实小说及全格式外观/选文复制的用户手动验收仍待测，不宣称完全逐像素一致 |
 | 阶段 4 模型/分类/changes | 以单个 `notes.kind` 区分三类独立实体；三张绑定表，标签为每实体 JSON；`Note.ts` 保留旧展示字段适配，新服务不把其位置写回实体；独立 `annotation_schema` 版本 1 | 统一实体表及类型/服务合并是实现组织差异，不是自动父子关系或旧模型双写；分类目前由实体标签承载，旧计划未明确要求单独分类表，不据此虚构表结构欠项。原计划提到的 `changes` 日志未实现；实体/绑定 version 是 CAS 版本，不能当作 changes 日志。新版云契约在现行范围中已另列待办，停用旧云同步仅是保护措施 |
@@ -259,7 +264,7 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 
 - 原计划 M1 对应当前 `txt_index_schema` v1 + documents/generations/chapters；M2 对应 `annotation_schema` v1 + notes/三类 bindings/drawing_notes。它们是两个独立版本域，不是已经存在统一递增 M1/M2 迁移日志。M3/M4 仅为旧计划的后续追加设计占位，尚不存在；具体版本按调整后的实际落地顺序分配，不构成旧阶段的先后硬依赖。
 - 原计划的“原文/DOM 坐标”和“按章串联重组”遵守第 4 节固定契约：BOM、CRLF/CR→LF、UTF-16 半开区间，以及章间分隔换行归属。裸拼章节切片可能丢失分隔换行，测试须按契约还原边界，不能借此放宽逐字符一致要求。
-- 旧计划不要求照搬拟定文件名；实际服务集中在 Koodo `txt-index-store.js`、`annotation-store.js`、`txtIndexService.ts`、`annotationService.ts` 和 Kookit `txtIndex.ts`/`txtAnchors.ts`。使用现有受控 `database-command` 不必为改名额外新增 preload 通道。
+- 旧计划不要求照搬拟定文件名；实际服务集中在 Koodo `txt-index-store.js`、`txt-index-tasks.js`、`txt-index-worker.js`、`txt-source.js`、`annotation-store.js`、`txtIndexService.ts`、`annotationService.ts` 和 Kookit `txtIndex.ts`/`txtStreamIndex.ts`/`txtAnchors.ts`。使用现有受控 `database-command` 不必为改名额外新增 preload 通道。
 - 最新已确认的三类独立实体、零/一连续范围、不设自动父子关系、可逆解绑及旧测试 Note 可舍弃等约束继续有效；保护绘图和新正式数据。未覆盖的原验收条件继续保留为待做，不能因使用不同模块组织而省略。
 
 ### 6.3 调整后的阶段顺序与完整计划
@@ -328,7 +333,7 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 ### 阶段 5：目录读数据库与虚拟列表
 
 - **仓库/文件：** Koodo `containers/lists/contentList/component.tsx`、CSS、`utils/common.ts` 中 scrollContents、navigationPanel、目录服务；TXT 引擎目录适配。
-- **链路：** 当前 htmlBook.chapters 全量 DOM map → SQLite 目录元数据 → 可见行索引 → 有界 DOM；点击仍走 chapter_id 定位。
+- **改造前基线→目标：** htmlBook.chapters 全量 DOM map → SQLite 目录元数据 → 可见行索引 → 有界 DOM；点击仍走 chapter_id 定位。
 - **迁移/旧数据：** 无新 Schema；全量轻量目录约 7.7k 可一次读取/分页，正文完全不随目录查询返回。
 - **步骤：** TXT 先做平面虚拟行、固定/受控测量行高和 overscan；搜索结果也虚拟化；替换依赖未挂载 DOM 的 querySelector 定位；开目录仅显式 scrollToIndex，保留手动浏览和已解决的回跳行为。跨格式树状目录不在首版随意替换。
 - **测试/验收：** 7.7k 章快速滚动、1→500→6800、搜索/IME、重新打开当前章、章节红色标识；目录操作不触发任何正文读取；行 DOM 数量受视口+缓冲上限约束，目标不超过 120 行。
@@ -396,7 +401,7 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 
 持续待查：历史 6 条笔记读取约 96.7s 的根因、章节加载偶发 1–4s、旧 findCurrentLine 深位置日志是否仍对应当前运行入口。已有分段计时，不能先用全量批注缓存掩盖问题，不能把旧日志或微基准当作已修复证明。
 
-其他阅读要求：目录打开时用户控制滚动；重新打开直接居中当前章、不播放旧位置平滑动画，尽可能显示邻章，保留其他展开分支及独立“返回原处”。后续虚拟化时落实，勿重查已解决回跳。章节标题居中且比正文大，仍待实现/验收。
+其他阅读要求：TXT 目录的手动浏览、重开直接居中且无旧位置平滑动画已由阶段 5 实现并自动覆盖，实书体验仍待测，勿重查已解决回跳。保留其他格式展开分支及独立“返回原处”的需求，并随阶段 7/8 阅读窗口与交互适配回归。章节标题居中且比正文大仍待实现/验收。
 
 ## 7. 验证与数据安全门槛
 
