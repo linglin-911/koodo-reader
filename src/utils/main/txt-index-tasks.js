@@ -68,19 +68,20 @@ module.exports.createTxtBuildTasks = ({ getConnection, ensureSchema, validateInd
       alive(task);
       const index = { ...result.header, chapters: readRows(db, book, task.generation) };
       validateIndex(index, t.metadata);
+      let publication;
       while (true) {
         alive(task);
         const [ticket, consumer] = task.consumers.entries().next().value;
-        try { await publish(ticket, consumer.source, index, task.generation); break; }
+        try { publication = await publish(ticket, consumer.source, index, task.generation, task.mode); break; }
         catch (error) {
           if (task.consumers.has(ticket) || !task.consumers.size) throw error;
         }
       }
       // A shared task updates every surviving source, so each reader can use its
       // own ticket. No cancelled/closed consumer can revive a released ticket.
-      for (const consumer of task.consumers.values()) { consumer.source.base = task.generation; consumer.source.readGeneration = task.generation; }
+      for (const consumer of task.consumers.values()) { consumer.source.base = publication?.generation || task.generation; consumer.source.readGeneration = publication?.generation || task.generation; }
       task.bytes = t.metadata.identity.size;
-      return { index, diagnostics: { workerScans: 1, scannedBytes: result.readBytes, maximumBatchRows: 128 } };
+      return { index: publication?.index || index, diagnostics: { workerScans: 1, scannedBytes: result.readBytes, maximumBatchRows: 128 } };
     } finally {
       clearInterval(watchdog);
       if (worker) await worker.terminate();
@@ -107,14 +108,17 @@ module.exports.createTxtBuildTasks = ({ getConnection, ensureSchema, validateInd
     }
   }
   return {
-    prepare(ticket, source) {
+    prepare(ticket, source, mode = "rebuild") {
       if (stopped) return Promise.reject(abortError());
-      if (byTicket.has(ticket)) return byTicket.get(ticket).consumers.get(ticket).promise;
-      const key = JSON.stringify([source.databasePath, source.request.bookId, source.metadata, source.base]);
+      if (byTicket.has(ticket)) {
+        const pending = byTicket.get(ticket);
+        return pending.mode === mode ? pending.consumers.get(ticket).promise : Promise.reject(Error("TXT source already has another build task"));
+      }
+      const key = JSON.stringify([source.databasePath, source.request.bookId, source.metadata, source.base, mode]);
       let task = tasks.get(key);
       if (!task) {
         if (tasks.size >= 16) return Promise.reject(Error("TXT indexing queue is full"));
-        task = { key, source, generation: crypto.randomUUID(), consumers: new Map(), bytes: 0, chapters: 0, state: "queued" };
+        task = { key, source, mode, generation: crypto.randomUUID(), consumers: new Map(), bytes: 0, chapters: 0, state: "queued" };
         tasks.set(key, task); queue.push(task);
       }
       let resolve, reject;

@@ -16,7 +16,7 @@ app.whenReady().then(async () => {
     const storage = path.join(temporary, "library");
     fs.mkdirSync(path.join(storage, "book"), { recursive: true });
     fs.mkdirSync(path.join(storage, "config"));
-    const first="Chapter 1\r\n正文一😀 & <tag>\r\n"+Array.from({length:25},(_,i)=>"短段落 "+i+"\r\n").join("")+"Chapter 2\r正文二𠀀及相邻章节选区测试原文ABCDEFGHIJKLMNOP\rChapter 3\nfirst legacy line\nsecond legacy line\nlegacy target line\nlast legacy line\nChapter 4\r\n";
+    const first="Chapter 1\r\n正文一😀 & <tag>\r\n"+Array.from({length:80},(_,i)=>"短段落 "+i+"\r\n").join("")+"Chapter 2\r正文二𠀀及相邻章节选区测试原文ABCDEFGHIJKLMNOP\rChapter 3\nfirst legacy line\nsecond legacy line\nlegacy target line\nlast legacy line\nChapter 4\r\n";
     const padding="x".repeat(8192-Buffer.byteLength(first)-8);
     fs.writeFileSync(path.join(storage,"book","fixture.txt"),first+padding+"CROSS_BLOCK_NEEDLE"+"巨章😀甲乙<>&".repeat(200000));
     db = new Database(path.join(storage, "config", "notes.db"));
@@ -46,6 +46,17 @@ app.whenReady().then(async () => {
       }
       return [];
     });
+    ipcMain.handle("phase8-legacy-cache",()=>{
+      const current=db.prepare("SELECT active_generation FROM txt_index_documents WHERE book_id='fixture'").get().active_generation;
+      db.prepare("UPDATE txt_index_generations SET index_json=json_remove(index_json,'$.checkpoints') WHERE book_id='fixture' AND generation=?").run(current);
+      return {generation:current,bindings:JSON.stringify(db.prepare("SELECT * FROM note_bindings ORDER BY id").all())};
+    });
+    ipcMain.handle("phase8-legacy-check",()=>({generation:db.prepare("SELECT active_generation FROM txt_index_documents WHERE book_id='fixture'").get().active_generation,bindings:JSON.stringify(db.prepare("SELECT * FROM note_bindings ORDER BY id").all())}));
+    ipcMain.handle("phase8-native-wheel",(_event,{direction,x,y})=>{
+      window.focus();
+      window.webContents.sendInputEvent({type:"mouseMove",x,y});
+      window.webContents.sendInputEvent({type:"mouseWheel",x,y,deltaY:-direction*600,deltaX:0,canScroll:true,hasPreciseScrollingDeltas:false});
+    });
     ipcMain.handle("phase8-stats",()=>({windowPages:requests.filter(r=>r.action==="reading-window"&&r.offset>0).length,windowHasBody,detailReads,maxCreateRangeBytes,requests,bookmarks:bookmarksDb.prepare("SELECT * FROM bookmarks").all()}));
     ipcMain.handle("phase8-copy",async()=>{
       const old={text:clipboard.readText(),html:clipboard.readHTML(),rtf:clipboard.readRTF(),image:clipboard.readImage()};
@@ -68,7 +79,7 @@ app.whenReady().then(async () => {
     ipcMain.on("storage-location", event => { event.returnValue = storage; });
     server = await createServer({ root: path.resolve(__dirname, ".."), server: { port: 0, host: "127.0.0.1", warmup: { clientFiles: [] } }, plugins: [{ name: "annotation-test", configureServer(vite) { vite.middlewares.use("/__annotation_test__", async (_req, res) => { res.setHeader("Content-Type", "text/html"); res.end(await vite.transformIndexHtml("/__annotation_test__", '<html><body><div id="page-area" style="width:600px;height:650px;overflow:auto"></div><div id="editor" style="position:absolute;top:0;right:0;width:520px;height:780px;overflow:auto;background:white"></div></body></html>')); }); } }] });
     await server.listen();
-    window = new BrowserWindow({ show: false, width: 1200, height: 850, webPreferences: { nodeIntegration: true, contextIsolation: false, sandbox: false, backgroundThrottling: false } });
+    window = new BrowserWindow({ show: true, x: -20000, y: 0, width: 1200, height: 850, webPreferences: { nodeIntegration: true, contextIsolation: false, sandbox: false, backgroundThrottling: false } });
     const errors = [];
     window.webContents.on("console-message", event => { if(event.message?.startsWith("[DIAG][Database] read:complete"))rendererLogs.push(event.message); if (event.level === 3)
         {errors.push(event.message);console.error("RENDERER:",event.message);} });

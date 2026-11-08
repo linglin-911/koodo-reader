@@ -184,6 +184,7 @@ export async function run(){
   render(<div/>);r.removeContent();await opened.store!.close();check(registry.size===0,"closing reader releases native highlight ranges and auxiliary paints");
   // The real Viewer must enable the supported path by default and persist its locator.
   area.remove();host.style.cssText="position:absolute;inset:0;width:100%;height:100%;overflow:hidden;background:white";useAppStore.getState().handleOpenMenu(false);useAppStore.getState().handleMenuMode("");ConfigService.setObjectConfig(book.key,JSON.parse(saved),"recordLocation");
+  const legacyCache=await window.electronAPI.invoke("phase8-legacy-cache");
   render(<Viewer book={book} rendition={null} isShow={true} handleLeaveReader={()=>{}} handleEnterReader={()=>{}}/>);
   await wait(()=>useAppStore.getState().reader.htmlBook?.rendition!==r&&!!useAppStore.getState().reader.htmlBook?.rendition?.isTxtWindowActive?.(),"real Viewer did not enable supported scroll window by default");
   const viewer=useAppStore.getState().reader.htmlBook.rendition;
@@ -192,6 +193,35 @@ export async function run(){
   await viewer.goToChapterDocIndex(1);await tick();
   await wait(()=>ConfigService.getObjectConfig(book.key,"recordLocation",{}).txtWindow?.chapterId===viewer.book.sections[1].chapter.chapterId,"real Viewer did not persist exact source location");
   check(true,"real Viewer persists latest window position through shared throttle");
+  const upgraded=await window.electronAPI.invoke("phase8-legacy-check");
+  check(upgraded.generation===legacyCache.generation&&upgraded.bindings===legacyCache.bindings,"real Viewer upgrades a legacy cache without changing generation, chapter IDs or formal bindings");
+  // Native discrete wheel input must reveal the adjacent chapter at the viewport
+  // edge, not replace the old chapter and snap its successor to the top.
+  const viewport=document.getElementById("page-area")!,nativeDoc=viewer.getDocument(),sameFrame=viewer.getIframe();
+  await viewer.goToChapterDocIndex(0);await new Promise(resolve=>setTimeout(resolve,350));
+  for(let i=0;i<6&&!viewer.txtWindow.views.some((view:{chapter:{index:number}})=>view.chapter.index===1);i++){viewport.scrollTop+=viewport.clientHeight/2;await viewer.txtWindow.fill();await tick();}
+  const oldBlock=viewer.txtWindow.views.find((view:{chapter:{index:number}})=>view.chapter.index===0).node;
+  const nextBlock=viewer.txtWindow.views.find((view:{chapter:{index:number}})=>view.chapter.index===1).node;
+  const boundary=nativeDoc.createRange();boundary.setStart(nextBlock.firstChild,0);boundary.setEnd(nextBlock.firstChild,1);
+  const top=()=>boundary.getBoundingClientRect().top-viewport.scrollTop;
+  const originalJump=viewer.txtWindow.jump.bind(viewer.txtWindow);let wheelJumps=0;
+  viewer.txtWindow.jump=(...args:unknown[])=>{wheelJumps++;return originalJump(...args);};
+  for(const direction of [1,-1]){
+    viewport.scrollTop=boundary.getBoundingClientRect().top+(direction>0?-viewport.clientHeight-50:50);
+    await new Promise(resolve=>setTimeout(resolve,200));
+    const before=top(),samples:number[]=[];let sampling=true;
+    const sample=()=>{samples.push(top());if(sampling)requestAnimationFrame(sample);};requestAnimationFrame(sample);
+    const received=new Promise<void>(resolve=>nativeDoc.addEventListener("wheel",()=>resolve(),{once:true}));
+    const rect=viewport.getBoundingClientRect();
+    await window.electronAPI.invoke("phase8-native-wheel",{direction,x:Math.round(rect.left+rect.width/2),y:Math.round(rect.top+rect.height/2)});
+    await Promise.race([received,new Promise((_,reject)=>setTimeout(()=>reject(Error("native wheel did not reach reader")),5000))]);
+    await new Promise(resolve=>setTimeout(resolve,700));sampling=false;
+    const movement=before-top();
+    check(Math.abs(movement-direction*600)<3&&top()>20&&top()<viewport.clientHeight-20,"one native wheel gesture crosses the chapter boundary without losing distance: "+direction+" ("+movement+"px)");
+    check(samples.filter(value=>value>20&&value<viewport.clientHeight-20).length>2&&samples.some(value=>(before-value)*direction>20&&(value-top())*direction>20)&&samples.every((value,index)=>!index||((samples[index-1]-value)*direction>=-2&&Math.abs(samples[index-1]-value)<300))&&oldBlock.isConnected&&nextBlock.isConnected&&sameFrame.isConnected&&useAppStore.getState().reader.htmlBook.rendition===viewer,"adjacent chapters enter through the viewport edge with continuous old/new content: "+direction);
+  }
+  check(wheelJumps===0,"native wheel chapter crossings never call the explicit jump/replace path");
+  viewer.txtWindow.jump=originalJump;
   await window.electronAPI.invoke("annotation-test-preview","native");
   root.unmount();viewer.removeContent();
   return {passed:true,cases:checks.length,checks,normalCompiledEngine:true,userDatabaseOpened:false};

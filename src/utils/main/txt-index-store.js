@@ -74,6 +74,7 @@ const validateRequest = (c) => {
       "open",
       "commit",
       "prepare",
+      "ensure-blocks",
       "build-status",
       "read-preview",
       "cancel-build",
@@ -212,8 +213,38 @@ const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {}
   const tickets = new Map(), openingOwners = new Map();
   const { createTxtBuildTasks } = require("./txt-index-tasks");
   const tasks = createTxtBuildTasks({ getConnection, ensureSchema, validateIndex,
-    publish: (ticket, t, index, generation) => run({ action: "commit", dbName: "notes", storagePath: t.request.storagePath, ticket, index, [STAGED]: generation }, t.owner),
+    publish: (ticket, t, index, generation, mode) => mode === "checkpoints"
+      ? addCheckpoints(ticket, t, index)
+      : run({ action: "commit", dbName: "notes", storagePath: t.request.storagePath, ticket, index, [STAGED]: generation }, t.owner),
     ...taskOptions });
+  // Add rebuildable acceleration metadata only. Never publish the temporary
+  // Worker's chapter IDs, advance a document revision, or mark bindings pending.
+  const addCheckpoints = async (ticket, t, scanned) => {
+    if (JSON.stringify((await inspectAsync(t.request)).metadata) !== JSON.stringify(t.metadata))
+      throw Error("TXT source changed while preparing continuous scrolling");
+    const db = await getConnection(t.request.storagePath);
+    if (tickets.get(ticket) !== t) throw Error("TXT source closed before checkpoint publication");
+    return db.transaction(() => {
+      const active = loadActive(db, t.request.bookId);
+      if (!active?.index || active.generation !== t.base || t.readGeneration !== t.base ||
+          JSON.stringify(active.metadata) !== JSON.stringify(t.metadata))
+        throw Error("TXT index changed while preparing continuous scrolling");
+      validateIndex(active.index, t.metadata);
+      if (active.index.checkpoints) return { generation: active.generation, index: active.index };
+      const fields = ["contract", "encoding", "bomBytes", "textLength", "byteLength", "lineCount", "mode"];
+      const chapterFields = ["index", "label", "byteStart", "byteEnd", "bodyByteStart", "start", "end", "bodyStart", "firstChars", "lastChars", "lineCount", "size", "recognition", "hasTitle", "fixedChunk"];
+      if (!scanned.checkpoints || fields.some(key => JSON.stringify(active.index[key]) !== JSON.stringify(scanned[key])) ||
+          active.index.chapters.length !== scanned.chapters.length || active.index.chapters.some((chapter, i) =>
+            chapterFields.some(key => chapter[key] !== scanned.chapters[i][key])))
+        throw Error("TXT checkpoint scan does not match the existing chapter coordinates");
+      const row = db.prepare("SELECT index_json FROM txt_index_generations WHERE book_id=? AND generation=? AND state='ready'").get(t.request.bookId, active.generation);
+      const header = { ...JSON.parse(row.index_json), checkpoints: scanned.checkpoints };
+      const changed = db.prepare("UPDATE txt_index_generations SET index_json=? WHERE book_id=? AND generation=? AND state='ready' AND index_json=?")
+        .run(JSON.stringify(header), t.request.bookId, active.generation, row.index_json);
+      if (changed.changes !== 1) throw Error("TXT checkpoints changed concurrently");
+      return { generation: active.generation, index: { ...active.index, checkpoints: scanned.checkpoints } };
+    })();
+  };
   const run = async (c, owner) => {
     validateRequest(c);
     if (c.action === "open") {
@@ -316,6 +347,14 @@ const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {}
       return { closed: true };
     }
     if (c.action === "prepare") return tasks.prepare(c.ticket, t);
+    if (c.action === "ensure-blocks") {
+      const db = await getConnection(c.storagePath), active = loadActive(db, t.request.bookId);
+      if (!active?.index || active.generation !== t.readGeneration || t.base !== t.readGeneration)
+        throw Error("TXT continuous scrolling requires the current ready index");
+      validateIndex(active.index, t.metadata);
+      if (active.index.checkpoints) return { index: active.index, diagnostics: { workerScans: 0, scannedBytes: 0 } };
+      return tasks.prepare(c.ticket, t, "checkpoints");
+    }
     if (c.action === "build-status") return tasks.status(c.ticket);
     if (c.action === "cancel-build") { tasks.release(c.ticket); return { cancelled: true }; }
     if (c.action === "read-preview") {

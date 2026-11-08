@@ -730,10 +730,14 @@ const Viewer = (props: ViewerProps) => {
         "recordLocation",
         {}
       );
-      await rendition.renderTo(
-        document.getElementById("page-area"),
-        bookLocation
-      );
+      try {
+        await rendition.renderTo(document.getElementById("page-area"), bookLocation);
+      } catch (error) {
+        rendition.removeContent();
+        await persistentTxt?.store?.close();
+        if (!txtOpenRef.current?.signal.aborted) setTxtProgress({ state: "failed" });
+        return;
+      }
     } else {
       await rendition.renderTo(document.getElementById("page-area"));
     }

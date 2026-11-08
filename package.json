@@ -113,7 +113,7 @@
     "pretest:e2e": "yarn build",
     "test:e2e": "playwright test",
     "ele": "electron .",
-    "dev": "concurrently \"cross-env BROWSER=none npm start\" \"wait-on http://127.0.0.1:3000/ && nodemon --watch main.js --watch src/utils/plugins/main --ext js --exec electron .\"",
+    "dev": "concurrently \"cross-env BROWSER=none npm start\" \"wait-on http://127.0.0.1:3000/ && nodemon --watch main.js --watch src/utils/main --watch src/utils/plugins/main --ext js,cjs --exec electron .\"",
     "release": "electron-builder",
     "prerelease": "yarn build",
     "postinstall": "node scripts/patch-nan.js && electron-builder install-app-deps",

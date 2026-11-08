@@ -69,7 +69,8 @@ const createSource = (
       if (closed) throw new Error("TXT source is closed");
       return force ? null : cached;
     },
-    prepare: (): Promise<TxtIndexSnapshot> => {
+    ensureBlocks: (): Promise<TxtIndexSnapshot> => source.prepare("ensure-blocks"),
+    prepare: (action: "prepare" | "ensure-blocks" = "prepare"): Promise<TxtIndexSnapshot> => {
       if (preparing) return preparing;
       preparing = (async () => {
         let active = true, timer: ReturnType<typeof setTimeout> | undefined, preview: string | undefined;
@@ -87,7 +88,7 @@ const createSource = (
           if (active && !closed) timer = setTimeout(poll, 100);
         };
         try {
-          const job = command({ action: "prepare" });
+          const job = command({ action });
           if (options.onProgress) void poll();
           const result = (await job) as { index: TxtIndexSnapshot };
           if (closed) throw new Error("TXT source is closed");
