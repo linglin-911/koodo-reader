@@ -1,3 +1,5 @@
+import { isElectron } from "react-device-detect";
+import { restoreAnnotations } from "../../utils/reader/annotationUtil";
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import "./deleteIcon.css";
@@ -66,6 +68,11 @@ const DeleteIcon = (props: DeleteIconProps) => {
     if (props.mode === "notes") {
       let note = await DatabaseService.getRecord(props.itemKey, "notes");
       if (!note) return;
+      if(isElectron){
+        await DatabaseService.deleteRecord(props.itemKey,"notes");
+        if(htmlBook?.rendition)await restoreAnnotations(currentBook,htmlBook.rendition,Number(htmlBook.rendition.getPosition()?.chapterDocIndex||0));
+        deleteFunc();toast.success(t("Deletion successful"));return;
+      }
       if (htmlBook && htmlBook.rendition) {
         htmlBook.rendition.removeOneNote(
           props.itemKey,

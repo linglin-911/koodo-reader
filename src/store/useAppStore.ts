@@ -39,6 +39,7 @@ const initialManager = {
   plugins: null as unknown as PluginModel[],
   deletedBooks: [] as BookModel[],
   searchResults: [] as number[],
+  annotationSearchKeyword: "",
   isSearch: false,
   isShowPopupNote: false,
   isAboutOpen: false,

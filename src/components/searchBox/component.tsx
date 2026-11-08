@@ -31,6 +31,7 @@ const SearchBox = (props: SearchBoxProps) => {
   const handleSearch = useAppStore((s) => s.handleSearch);
   const { t } = useTranslation();
   const searchBoxRef = useRef<HTMLInputElement>(null);
+  const searchVersion=useRef(0);
   const [isFocused, setIsFocused] = useState(false);
 
   useEffect(() => {
@@ -41,6 +42,7 @@ const SearchBox = (props: SearchBoxProps) => {
   }, []);
 
   const handleGetSearchResults = async (keyword: string) => {
+    if(tabMode==="note"||tabMode==="highlight")useAppStore.setState(state=>({manager:{...state.manager,annotationSearchKeyword:keyword}}));
     let results =
       tabMode === "note"
         ? await ConfigUtil.searchNotesByKeyword(keyword, "", "note")
@@ -70,8 +72,10 @@ const SearchBox = (props: SearchBoxProps) => {
   };
 
   const search = async (q: string) => {
+    const version=++searchVersion.current;
     props.handleNavSearchState?.("searching");
     let searchList = await htmlBook.rendition.doSearch(q);
+    if(version!==searchVersion.current)return;
     props.handleNavSearchState?.("pending");
     props.handleSearchList?.(
       searchList.map((item: any) => {
@@ -134,6 +138,7 @@ const SearchBox = (props: SearchBoxProps) => {
   };
 
   const handleCancel = () => {
+    searchVersion.current++;htmlBook?.rendition?.cancelTxtSearch?.();
     if (props.isNavSearch) {
       props.handleSearchList?.(null);
       props.handleNavSearchState?.("done");

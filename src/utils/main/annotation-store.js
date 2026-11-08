@@ -27,6 +27,7 @@ const ACTIONS = new Set([
     "undo",
     "bind",
     "reading",
+    "reading-window",
 ]);
 const validString = (value, max = 1024) => typeof value === "string" && value.length <= max && !value.includes("\0");
 const requireString = (value, max = 1024) => {
@@ -62,6 +63,7 @@ const ensureAnnotationSchema = (db) => {
         if (exists) {
             if (db.prepare("SELECT version FROM annotation_schema").get()?.version !== 1)
                 throw new Error("Unsupported annotation schema");
+            db.exec("CREATE INDEX IF NOT EXISTS note_bindings_window ON note_bindings(book_id,generation,status,start_index,relative_start,relative_end)");
             return;
         }
         if (db.name !== ":memory:")
@@ -92,6 +94,7 @@ const ensureAnnotationSchema = (db) => {
                     db.exec(`CREATE UNIQUE INDEX ${table}_one ON ${table}(note_key) WHERE status!='unbound'`);
             }
         })();
+        db.exec("CREATE INDEX IF NOT EXISTS note_bindings_window ON note_bindings(book_id,generation,status,start_index,relative_start,relative_end)");
     })();
     migrations.set(db, pending);
     pending.catch(() => migrations.delete(db));
@@ -106,7 +109,7 @@ const bindings = (db, key) => Object.entries(TABLES).flatMap(([kind, table]) => 
     .prepare(`SELECT * FROM ${table} WHERE note_key=? ORDER BY rowid`)
     .all(key)
     .map((r) => ({ ...bindingDto(r), kind })));
-const annotationDto = (db, row, details = true) => {
+const annotationDto = (db, row, details = true, headers = new Map()) => {
     if (!row)
         return null;
     const all = details ? bindings(db, row.key) : [];
@@ -115,7 +118,7 @@ const annotationDto = (db, row, details = true) => {
         : (() => {
             const table = TABLES[row.kind];
             const value = db
-                .prepare(`SELECT id,generation,chapter_id,format,status,anchor_json,start_index,style,substr(quote,1,160) AS quote FROM ${table} WHERE note_key=? AND status!='unbound' ORDER BY rowid LIMIT 1`)
+                .prepare(`SELECT id,generation,chapter_id,format,status,anchor_json,start_index,relative_start,style,substr(quote,1,160) AS quote FROM ${table} WHERE note_key=? AND status!='unbound' ORDER BY rowid LIMIT 1`)
                 .get(row.key);
             return value
                 ? { ...value, anchor: JSON.parse(value.anchor_json) }
@@ -136,8 +139,22 @@ const annotationDto = (db, row, details = true) => {
             annotationChapterId: first.chapter_id,
             annotationFormat: first.format,
             annotationStatus: first.status,
+            annotationGeneration: first.generation,
+            annotationStart: first.relative_start ?? 0,
         }
         : { annotationUnbound: true };
+    let percentage=locator?.percentage || "0";
+    if(first?.format==="TXT" && first.generation && snapshot){
+        const cacheKey=JSON.stringify([row.bookKey,first.generation]);
+        if(!headers.has(cacheKey)){
+            if(!headers.has("schema"))headers.set("schema",!!db.prepare("SELECT 1 FROM sqlite_master WHERE name='txt_index_generations'").get());
+            const saved=headers.get("schema")?db.prepare("SELECT index_json FROM txt_index_generations WHERE book_id=? AND generation=?").get(row.bookKey,first.generation):undefined;
+            let length=0;try{length=JSON.parse(saved?.index_json||"{}").textLength||0;}catch{}
+            headers.set(cacheKey,length);
+        }
+        const total=headers.get(cacheKey),position=row.kind==="small"?(snapshot.bodyStart||snapshot.start||0)+(first.relative_start||0):(snapshot.start||0);
+        if(total>0)percentage=String(Math.max(0,Math.min(1,position/total)));
+    }
     return {
         ...row,
         tag: JSON.parse(row.tag),
@@ -148,7 +165,7 @@ const annotationDto = (db, row, details = true) => {
         text: first?.quote || row.text || "",
         cfi: JSON.stringify(location),
         range: locator?.range || "{}",
-        percentage: locator?.percentage || "0",
+        percentage,
         color: first?.style || "background-#FEF3CD",
     };
 };
@@ -322,7 +339,8 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
         metrics.setAction(c.action); // Only whitelisted action names may enter logs.
         const db = await get(c.storagePath, metrics);
         const describeChapter = (...args) => metrics.asyncStage("sourceValidationDurationMs", () => describeTxt(...args));
-        const dto = (db, row, details = true) => metrics.convert(() => annotationDto(db, row, details));
+        const headers=new Map();
+        const dto = (db, row, details = true) => metrics.convert(() => annotationDto(db, row, details,headers));
         if (c.action === "export")
             return exportData(db);
         if (c.action === "import")
@@ -446,7 +464,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
             const rows = db
                 .prepare(`SELECT n.key,n.bookKey,n.kind,n.title,substr(n.notes,1,160) AS notes,n.tag,n.date,n.version,n.updated_at,
         (SELECT substr(quote,1,160) FROM note_bindings WHERE note_key=n.key AND status!='unbound' LIMIT 1) AS text
-        FROM notes n ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY n.updated_at ${c.order === "ASC" ? "ASC" : "DESC"},n.key LIMIT ? OFFSET ?`)
+        FROM notes n ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY ${c.sort === "position" ? `COALESCE((SELECT MIN(start_index) FROM note_bindings WHERE note_key=n.key AND status='active'),2147483647) ${c.order === "ASC" ? "ASC" : "DESC"},COALESCE((SELECT relative_start FROM note_bindings WHERE note_key=n.key AND status='active' ORDER BY start_index,relative_start,id LIMIT 1),0)` : "n.updated_at"} ${c.order === "ASC" ? "ASC" : "DESC"},n.key LIMIT ? OFFSET ?`)
                 .all(...args, limit, offset);
             const result = rows.map((row) => dto(db, row, false));
             if (c.tab === "annotation")
@@ -602,7 +620,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 throw new Error("Invalid binding format");
             let anchor, generation = null, chapterId = null, startIndex, endIndex, quote = "", prefix = "", suffix = "", relativeStart = null, relativeEnd = null;
             if (input.format === "TXT") {
-                const first = await describeChapter(owner, input.sourceTicket, input.chapterIndex, input.chapterId, note.kind === "small");
+                const first = await describeChapter(owner, input.sourceTicket, input.chapterIndex, input.chapterId, note.kind === "small" ? {start:input.start,end:input.end} : false);
                 if (first.bookId !== note.bookKey)
                     throw new Error("Cross-book annotation binding");
                 generation = first.generation;
@@ -634,19 +652,17 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                     };
                 if (note.kind === "small") {
                   metrics.input(() => {
-                    const body = first.text.slice(first.chapter.bodyStart - first.chapter.start);
+                    const bodyLength = first.chapter.end-first.chapter.bodyStart;
                     relativeStart = input.start;
                     relativeEnd = input.end;
+                    const base=first.chapter.bodyStart-(first.textStart??first.chapter.start),start=base+relativeStart,end=base+relativeEnd;
                     if (![relativeStart, relativeEnd].every(Number.isSafeInteger) ||
-                        relativeStart < 0 ||
-                        relativeEnd <= relativeStart ||
-                        relativeEnd > body.length ||
-                        !boundary(body, relativeStart) ||
-                        !boundary(body, relativeEnd))
+                        relativeStart < 0 || relativeEnd <= relativeStart || relativeEnd > bodyLength ||
+                        start<0 || end>first.text.length || !boundary(first.text,start) || !boundary(first.text,end))
                         throw new Error("Invalid source text range");
-                    quote = body.slice(relativeStart, relativeEnd);
-                    prefix = Array.from(body.slice(0, relativeStart)).slice(-32).join("");
-                    suffix = Array.from(body.slice(relativeEnd)).slice(0, 32).join("");
+                    quote = first.text.slice(start,end);
+                    prefix = Array.from(first.text.slice(Math.max(0,base),start)).slice(-32).join("");
+                    suffix = Array.from(first.text.slice(end)).slice(0,32).join("");
                     if (quote.length > 2 * 1024 * 1024)
                         throw new Error("Selection is too long");
                   });
@@ -698,6 +714,41 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 db.prepare(`INSERT INTO ${table} VALUES(${Array(16).fill("?").join(",")},1,NULL)`).run(id, note.key, note.bookKey, input.format, generation, chapterId, startIndex, endIndex, "active", JSON.stringify(anchor), quote, prefix, suffix, relativeStart, relativeEnd, requireString(input.style || "background-#FEF3CD", 256));
             })();
             return dto(db, db.prepare("SELECT * FROM notes WHERE key=?").get(note.key));
+        }
+        if (c.action === "reading-window") {
+            const book=identifier(c.bookKey), offset=c.offset??0, limit=c.limit??200;
+            if(c.format!=="TXT" || !Array.isArray(c.blocks) || c.blocks.length>24 ||
+               !Number.isSafeInteger(offset)||offset<0||offset>10000000||!Number.isSafeInteger(limit)||limit<1||limit>200)
+                throw Error("Invalid annotation window");
+            if(c.blocks.reduce((sum,block)=>sum+(block.end-block.start),0)>128*1024)throw Error("Annotation window exceeds character budget");
+            if(!c.blocks.length)return {records:[],related:[],hasMore:false};
+            const currentChapters=new Map();let generation;
+            for(const block of c.blocks){
+                if(!Number.isSafeInteger(block.chapterIndex)||block.chapterIndex<0||!Number.isSafeInteger(block.start)||!Number.isSafeInteger(block.end)||block.start<0||block.end<=block.start||block.end-block.start>8192)
+                    throw Error("Invalid annotation window block");
+                let current=currentChapters.get(block.chapterIndex);
+                if(!current){current=await describeChapter(owner,c.sourceTicket,block.chapterIndex,block.chapterId,false);currentChapters.set(block.chapterIndex,current);}
+                if(current.bookId!==book||current.chapter.chapterId!==block.chapterId||block.end>current.chapter.end-current.chapter.bodyStart || (generation&&generation!==current.generation))
+                    throw Error("Annotation window belongs to another source");
+                generation=current.generation;
+            }
+            const predicates=c.blocks.map(()=>"(b.start_index=? AND b.relative_end>? AND b.relative_start<?)").join(" OR ");
+            const args=c.blocks.flatMap(block=>[block.chapterIndex,block.start,block.end]);
+            const rows=db.prepare(`SELECT b.id,b.note_key,b.style,b.start_index,b.relative_start,b.relative_end,b.version,n.notes!='' AS hasNote
+              FROM note_bindings b JOIN notes n ON n.key=b.note_key
+              WHERE b.book_id=? AND b.generation=? AND b.status='active' AND b.format='TXT' AND (${predicates})
+              ORDER BY b.id LIMIT ? OFFSET ?`).all(book,generation,...args,limit+1,offset);
+            const related=[];
+            // Chapter/range entities remain independent. Query their relations,
+            // without importing note bodies or treating them as child highlights.
+            if(offset===0)for(const [kind,table] of Object.entries(TABLES).filter(([kind])=>kind!=="small")){
+                const indices=[...currentChapters.keys()];
+                const relation=db.prepare(`SELECT b.id AS bindingId,b.note_key AS entityKey,b.start_index AS startIndex,b.end_index AS endIndex,n.title,n.notes!='' AS hasNote
+                  FROM ${table} b JOIN notes n ON n.key=b.note_key WHERE b.book_id=? AND b.generation=? AND b.status='active' AND (${indices.map(()=>"(b.start_index<=? AND b.end_index>=?)").join(" OR ")}) ORDER BY b.id LIMIT 201`)
+                  .all(book,generation,...indices.flatMap(index=>[index,index]));
+                related.push(...relation.slice(0,200).map(row=>({...row,kind})));
+            }
+            return {records:rows.slice(0,limit).map(row=>({key:row.id,entityKey:row.note_key,bindingId:row.id,color:row.style,hasNote:!!row.hasNote,notes:"",chapterIndex:row.start_index,txtAnchor:{start:row.relative_start,end:row.relative_end}})),related,hasMore:rows.length>limit};
         }
         if (c.action === "reading") {
             const book = identifier(c.bookKey), index = c.chapterIndex;

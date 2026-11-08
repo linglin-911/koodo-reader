@@ -7,6 +7,8 @@ interface Rendition {
   getAnnotationAnchor?: () => BindingInput;
   getTxtChapterSnapshot?: () => { chapterId: string };
   txtIndexStore?: { sourceTicket?: string };
+  getTxtWindowState?: () => {key:string;generation:string|null;blocks:import("../storage/annotationService").AnnotationWindowBlock[]}|undefined;
+  setTxtRelatedAnnotations?: (rows:unknown[])=>void;
   getHighlightCoords: (index: number) => Promise<unknown>;
   getPosition: () => unknown;
   getPositionByChapter?: (index: number) => unknown;
@@ -67,6 +69,18 @@ export const restoreAnnotations = async (
 ) => {
   const version = (restoreVersions.get(rendition) || 0) + 1;
   restoreVersions.set(rendition, version);
+  const windowState = rendition.getTxtWindowState?.();
+  if (windowState) {
+    const rows:import("../storage/annotationService").ReadingAnnotation[]=[];const related:unknown[]=[];
+    for(let offset=0;;offset+=200){
+      const page=await AnnotationService.readingWindow({bookKey:book.key,format:"TXT",sourceTicket:rendition.txtIndexStore?.sourceTicket,blocks:windowState.blocks,offset},{traceId:rendition.diagnosticTraceId});
+      if(restoreVersions.get(rendition)!==version || rendition.getTxtWindowState?.()?.key!==windowState.key || rendition.getTxtWindowState?.()?.generation!==windowState.generation)return;
+      rows.push(...page.records);related.push(...page.related);
+      if(!page.hasMore)break;
+    }
+    rendition.setTxtRelatedAnnotations?.(related);
+    await rendition.renderHighlighters(rows,annotationTarget);return;
+  }
   const chapter = rendition.getTxtChapterSnapshot?.();
   const rows = await AnnotationService.reading({
     bookKey: book.key,

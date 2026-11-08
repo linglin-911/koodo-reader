@@ -1,5 +1,6 @@
 class BookLocation {
   bookKey: string;
+  txtWindow?: {version:1;chapterId:string;generation:string|null;offset:number};
   text: string;
   chapterTitle: string;
   chapterDocIndex: string;

@@ -1224,5 +1224,10 @@
   "Annotation changed or source unavailable; reload and retry": "Annotation changed or source unavailable; reload and retry",
   "Related annotations": "Related annotations",
   "Search existing small annotations": "Search existing small annotations",
-  "Manage bindings": "Manage bindings"
+  "Manage bindings": "Manage bindings",
+  "Previous": "Previous",
+  "Next": "Next",
+  "Loaded": "Loaded",
+  "Failed to load annotations": "Failed to load annotations",
+  "Showing first 200 matches": "Showing first 200 matches"
 }

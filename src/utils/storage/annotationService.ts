@@ -83,7 +83,11 @@ export const annotationCommand = <T = unknown>(
     action,
     ...data,
   }, context);
+export interface AnnotationWindowBlock { chapterIndex:number; chapterId:string; start:number; end:number; }
+export interface ReadingAnnotation { key:string;entityKey:string;bindingId:string;color:string;hasNote:boolean;notes:string;chapterIndex:number;txtAnchor?:{start:number;end:number}; }
 export const AnnotationService = {
+  readingWindow: (data: {bookKey:string;format:"TXT";sourceTicket?:string;blocks:AnnotationWindowBlock[];offset:number}, context:DatabaseReadContext={}) =>
+    annotationCommand<{records:ReadingAnnotation[];related:unknown[];hasMore:boolean}>("reading-window",{...data,limit:200},context),
   create: (note:{bookKey:string;kind:AnnotationKind;notes:string;tag:string[];title?:string},binding:BindingInput) =>
     annotationCommand<AnnotationEntity>("create",{note,binding}),
   list: (filter: Record<string, unknown> = {}) =>

@@ -19,3 +19,5 @@
 }
 
 .annotation-workspace-back { position:fixed;right:20px;top:65px;z-index:2; }
+
+.annotation-page-controls{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px;}

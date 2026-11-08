@@ -142,6 +142,11 @@ const ReaderTopToolbar = (props: ReaderTopToolbarProps) => {
       "recordLocation",
       {}
     );
+    if(htmlBook.rendition.isTxtWindowActive?.()) {
+      await htmlBook.rendition.record();
+      bookLocation={...htmlBook.rendition.getPosition()};
+      ConfigService.setObjectConfig(bookKey,bookLocation,"recordLocation");
+    }
     let text = bookLocation.text;
     let chapter = bookLocation.chapterTitle;
     let percentage = bookLocation.percentage;

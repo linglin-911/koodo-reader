@@ -1,3 +1,4 @@
+import { throttle } from "../../../utils/common";
 import { useLatest } from "../../../utils/hooks/useLatest";
 import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
@@ -15,6 +16,7 @@ import { useAppStore } from "../../../store/useAppStore";
 
 export interface CardListProps {
   cards: NoteModel[];
+  summaries?: boolean;
   mode: string;
   bookNamesMap: { [key: string]: string };
 }
@@ -30,6 +32,7 @@ const CardList = (props: CardListProps) => {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollTimerRef = useRef<any>(null);
+  const loadVersion = useRef(0);
   const [state, setState] = useState<Record<string, any>>({
     displayedCards: [],
     currentPage: 1,
@@ -40,6 +43,7 @@ const CardList = (props: CardListProps) => {
   const propsRef = useLatest(props);
 
   const loadInitialCards = async () => {
+    const version=++loadVersion.current;
     let sortedCards = [...props.cards];
     const { itemsPerPage } = stateRef.current;
 
@@ -49,12 +53,13 @@ const CardList = (props: CardListProps) => {
     let initialCards = sortedCards.slice(0, adaptiveItemsPerPage);
     let initialDisplayedCards: Note[] = [];
     for (let i = 0; i < initialCards.length; i++) {
-      let card = await DatabaseService.getRecord(initialCards[i].key, "notes");
+      let card = props.summaries ? initialCards[i] : await DatabaseService.getRecord(initialCards[i].key, "notes");
       if (card) {
         initialDisplayedCards.push(card);
       }
     }
 
+    if(version!==loadVersion.current)return;
     setState({
       displayedCards: initialDisplayedCards,
       currentPage: 1,
@@ -74,19 +79,22 @@ const CardList = (props: CardListProps) => {
 
     setState((prev) => ({ ...prev, isLoading: true }));
 
+    const version=loadVersion.current;
     setTimeout(async () => {
+      if(version!==loadVersion.current)return;
       const nextPage = currentPage + 1;
       const startIndex = currentPage * itemsPerPage;
       const endIndex = nextPage * itemsPerPage;
       let newCards = sortedCards.slice(startIndex, endIndex);
       let newDisplayedCards: Note[] = [];
       for (let i = 0; i < newCards.length; i++) {
-        let card = await DatabaseService.getRecord(newCards[i].key, "notes");
+        let card = propsRef.current.summaries ? newCards[i] : await DatabaseService.getRecord(newCards[i].key, "notes");
         if (card) {
           newDisplayedCards.push(card);
         }
       }
 
+      if(version!==loadVersion.current)return;
       setState((prev) => ({
         ...prev,
         displayedCards: [...prev.displayedCards, ...newDisplayedCards],
@@ -96,22 +104,10 @@ const CardList = (props: CardListProps) => {
     }, 200);
   };
 
-  const handleScroll = () => {
-    if (scrollTimerRef.current) {
-      clearTimeout(scrollTimerRef.current);
-    }
-
-    scrollTimerRef.current = setTimeout(() => {
-      const container = containerRef.current;
-      if (!container) return;
-
-      const { scrollTop, scrollHeight, clientHeight } = container;
-
-      if (scrollHeight - scrollTop - clientHeight < 100) {
-        loadMoreCards();
-      }
-    }, 100);
-  };
+  const handleScroll = throttle(() => {
+    const container=containerRef.current;if(!container)return;
+    if(container.scrollHeight-container.scrollTop-container.clientHeight<100)loadMoreCards();
+  },100);
 
   useEffect(() => {
     loadInitialCards();
@@ -120,6 +116,7 @@ const CardList = (props: CardListProps) => {
       container.addEventListener("scroll", handleScroll);
     }
     return () => {
+      loadVersion.current++;
       if (container) {
         container.removeEventListener("scroll", handleScroll);
       }

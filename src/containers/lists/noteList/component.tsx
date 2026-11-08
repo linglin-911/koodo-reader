@@ -1,3 +1,4 @@
+import { useAnnotationPage } from "../../../utils/hooks/useAnnotationPage";
 import { isElectron } from "react-device-detect";
 import AnnotationWorkspace from "../../../components/annotations/workspace";
 import { useTranslation } from "react-i18next";
@@ -13,6 +14,9 @@ import Note from "../../../models/Note";
 import { useAppStore } from "../../../store/useAppStore";
 
 const LegacyNoteList = (props:{onManage?:()=>void}) => {
+  const allBooks = useAppStore((s)=>s.manager.books);
+  const nativeKeyword = useAppStore((s)=>s.manager.annotationSearchKeyword);
+  const noteSortCode=useAppStore(s=>s.manager.noteSortCode);
   const notes = useAppStore((s) => s.reader.notes);
   const highlights = useAppStore((s) => s.reader.highlights);
   const isSearch = useAppStore((s) => s.manager.isSearch);
@@ -24,6 +28,13 @@ const LegacyNoteList = (props:{onManage?:()=>void}) => {
   const [tag, setTag] = useState<string[]>([]);
   const [bookNamesMap, setBookNamesMap] = useState<Record<string, string>>({});
   const [cardList, setCardList] = useState<Note[]>([]);
+  const [bookFilter,setBookFilter]=useState("");
+  const nativePage=useAnnotationPage(isElectron,{bookKey:bookFilter,kind:"small",tab:tabMode,tags:tag,keyword:isSearch?nativeKeyword:"",order:noteSortCode.order===1?"ASC":"DESC",sort:noteSortCode.sort===2?"position":"date"},tabMode==="note"?notes:highlights);
+  useEffect(()=>{
+    let active=true;
+    if(isElectron)void BookUtil.getBookNamesMapByKeys([...new Set(nativePage.records.map(note=>note.bookKey))]).then(map=>{if(active)setBookNamesMap(map);});
+    return()=>{active=false;};
+  },[nativePage.records]);
 
   const handleNamesMap = async (notes: Note[]) => {
     let uniqueBookKeys = Array.from(new Set(notes.map((note) => note.bookKey)));
@@ -37,12 +48,14 @@ const LegacyNoteList = (props:{onManage?:()=>void}) => {
   }, []);
 
   useEffect(() => {
+    if(isElectron)return;
     const currentNotes = tabMode === "note" ? notes : highlights;
     setCardList(currentNotes);
     handleNamesMap(currentNotes);
   }, [notes, highlights, tabMode]);
 
   const handleTag = async (newTag: string[]) => {
+    if(isElectron){setTag(newTag);return;}
     if (newTag.length === 0) {
       setTag([]);
       setCardList(tabMode === "note" ? notes : highlights);
@@ -59,8 +72,9 @@ const LegacyNoteList = (props:{onManage?:()=>void}) => {
   };
 
   const noteProps = {
-    cards: isSearch ? searchResults : cardList,
+    cards: isElectron ? nativePage.records : isSearch ? searchResults : cardList,
     mode: tabMode,
+    summaries: isElectron,
     bookNamesMap: bookNamesMap,
   };
   return (
@@ -77,16 +91,18 @@ const LegacyNoteList = (props:{onManage?:()=>void}) => {
         <div className="note-tags" style={{ width: props.onManage ? "calc(100% - 340px)" : "calc(100% - 240px)" }}>
           <NoteTag {...({ handleTag: handleTag } as any)} />
         </div>
-        {noteProps.cards.length > 0 && (
+        {(isElectron || noteProps.cards.length > 0) && (
           <div style={{ marginRight: "10px", marginTop: "3px" }}>
             <span className="note-list-filter-label">
               <Trans>Filter by book</Trans>
             </span>
 
             <select
-              name=""
+              aria-label={t("Filter by book")}
+              value={isElectron ? bookFilter : undefined}
               className="lang-setting-dropdown"
               onChange={async (event) => {
+                if(isElectron){setBookFilter(event.target.value);return;}
                 setCardList(
                   await ConfigUtil.getNotesByBookKeyAndTypeWithSort(
                     event.target.value,
@@ -97,16 +113,16 @@ const LegacyNoteList = (props:{onManage?:()=>void}) => {
             >
               {[
                 { value: "", label: t("Please select") },
-                ...(tabMode === "note" ? notes : highlights)
+                ...(isElectron?(allBooks||[]).map(book=>({bookKey:book.key})):tabMode === "note" ? notes : highlights)
                   .map((note) => {
                     return {
-                      label: bookNamesMap[note.bookKey] || "Unknown book",
+                      label: bookNamesMap[note.bookKey] || allBooks?.find(book=>book.key===note.bookKey)?.name || "Unknown book",
                       value: note.bookKey,
                     };
                   })
                   .filter(
                     (item, index, self) =>
-                      self.findIndex((t) => t.label === item.label) === index
+                      self.findIndex((entry) => entry.value === item.value) === index
                   ),
               ].map((item) => (
                 <option
@@ -122,6 +138,12 @@ const LegacyNoteList = (props:{onManage?:()=>void}) => {
         )}
       </div>
 
+      {isElectron&&<div className="annotation-page-controls" data-annotation-pager="manager">
+        <button disabled={nativePage.offset===0||nativePage.loading} onClick={nativePage.previous}>{t("Previous")}</button>
+        <span>{Math.floor(nativePage.offset/100)+1}</span>
+        <button disabled={!nativePage.hasMore||nativePage.loading} onClick={nativePage.next}>{t("Next")}</button>
+        {nativePage.error&&<span role="alert">{t("Failed to load annotations")}</span>}
+      </div>}
       {noteProps.cards.length === 0 ? (
         <div
           style={{

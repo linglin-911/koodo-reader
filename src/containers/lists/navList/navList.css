@@ -134,3 +134,5 @@
   height: 0px;
   margin: 6px 0px;
 }
+
+.annotation-page-controls{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px;}

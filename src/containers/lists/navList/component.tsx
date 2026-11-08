@@ -1,3 +1,5 @@
+import { isElectron } from "react-device-detect";
+import { useAnnotationPage } from "../../../utils/hooks/useAnnotationPage";
 import { canJumpAnnotation } from "../../../utils/reader/annotationUtil";
 import { useLatest } from "../../../utils/hooks/useLatest";
 import { useTranslation } from "react-i18next";
@@ -83,6 +85,7 @@ const NavList = (props: NavListProps) => {
     };
   });
 
+  const nativePage=useAnnotationPage(isElectron&&props.currentTab!=="bookmarks",{bookKey:currentBook.key,kind:"small",tab:props.currentTab==="notes"?"note":"highlight",keyword:state.isComposing?"":state.searchKeyword.trim(),order:state.orderCode===1?"ASC":"DESC",sort:state.sortCode===2?"position":"date"},props.currentTab==="notes"?notes:highlights);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const highlightUtilRef = useRef<any>(null);
   if (!highlightUtilRef.current) {
@@ -93,6 +96,7 @@ const NavList = (props: NavListProps) => {
   const stateRef = useLatest(state);
 
   const handleSearch = async (keyword: string) => {
+    if(isElectron&&props.currentTab!=="bookmarks")return;
     const trimmedKeyword = keyword.trim();
     if (!trimmedKeyword) {
       setState((prev) => ({ ...prev, searchResults: [] }));
@@ -187,7 +191,8 @@ const NavList = (props: NavListProps) => {
       };
     }
     if (!canJumpAnnotation(bookLocation, htmlBook.rendition)) return;
-    const prevPosition = ConfigService.getObjectConfig(
+    if(htmlBook.rendition.isTxtWindowActive?.())await htmlBook.rendition.record();
+    const prevPosition = htmlBook.rendition.isTxtWindowActive?.() ? {...htmlBook.rendition.getPosition()} : ConfigService.getObjectConfig(
       currentBook.key,
       "recordLocation",
       {}
@@ -195,6 +200,7 @@ const NavList = (props: NavListProps) => {
     handleJumpPosition(prevPosition);
     await htmlBook.rendition.goToPosition(
       JSON.stringify({
+        ...bookLocation,
         text: bookLocation.text,
         chapterTitle: bookLocation.chapterTitle,
         chapterDocIndex: bookLocation.chapterDocIndex,
@@ -217,6 +223,7 @@ const NavList = (props: NavListProps) => {
     highlights: Note[],
     keywordOverride?: string
   ) => {
+    if(isElectron&&currentTab!=="bookmarks")return;
     const applyData = (data: (Bookmark | Note)[]) => {
       const keyword =
         keywordOverride !== undefined
@@ -468,13 +475,13 @@ const NavList = (props: NavListProps) => {
   const isSearching =
     state.searchKeyword.trim().length > 0 && !state.isComposing;
   const baseList = isSearching ? state.searchResults : state.currentData;
-  const displayData = getSortedData(baseList);
+  const displayData = isElectron&&props.currentTab!=="bookmarks" ? nativePage.records as unknown as Note[] : getSortedData(baseList);
 
   return (
     <div className="book-bookmark-container">
       <div className="book-nav-header">
         <div>
-          <Trans>Total</Trans>: {state.currentData.length}
+          <Trans>{isElectron&&props.currentTab!=="bookmarks"?"Loaded":"Total"}</Trans>: {displayData.length}
         </div>
         <div className="book-nav-actions">
           <div className="nav-sort-wrap">
@@ -566,6 +573,12 @@ const NavList = (props: NavListProps) => {
           />
         </div>
       )}
+      {isElectron&&props.currentTab!=="bookmarks"&&<div className="annotation-page-controls" data-annotation-pager="reader">
+        <button disabled={nativePage.offset===0||nativePage.loading} onClick={nativePage.previous}>{t("Previous")}</button>
+        <span>{Math.floor(nativePage.offset/100)+1}</span>
+        <button disabled={!nativePage.hasMore||nativePage.loading} onClick={nativePage.next}>{t("Next")}</button>
+        {nativePage.error&&<span role="alert">{t("Failed to load annotations")}</span>}
+      </div>}
       {isSearching && displayData.length === 0 ? (
         <div className="book-nav-search-empty">
           <Trans>No results found</Trans>

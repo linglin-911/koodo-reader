@@ -247,6 +247,7 @@ const NavigationPanel = (props: NavigationPanelProps) => {
     if (!canJumpAnnotation(bookLocation, htmlBook.rendition)) return;
     await htmlBook.rendition.goToPosition(
       JSON.stringify({
+        ...bookLocation,
         text: bookLocation.text,
         chapterTitle: bookLocation.chapterTitle,
         chapterDocIndex: bookLocation.chapterDocIndex,
@@ -278,6 +279,7 @@ const NavigationPanel = (props: NavigationPanelProps) => {
     const totalCount = state.searchList.length;
     return (
       <>
+        {htmlBook.rendition.searchHasMore&&<div><Trans>Showing first 200 matches</Trans></div>}
         <div className="nav-search-total">
           <Trans i18nKey="Total search results" count={totalCount}>
             {"Total " + totalCount + " results"}

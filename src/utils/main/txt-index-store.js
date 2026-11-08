@@ -551,7 +551,7 @@ const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {}
     if(!t||t.owner!==owner||!t.readGeneration)throw new Error("TXT source unavailable; reopen before annotating");
     if(JSON.stringify((await inspectAsync(t.request)).metadata)!==JSON.stringify(t.metadata))throw new Error("TXT source changed; reopen before annotating");
     const db=await getConnection(t.request.storagePath);
-    const row=db.prepare(`SELECT c.*,g.document_revision FROM txt_index_chapters c
+    const row=db.prepare(`SELECT c.*,g.document_revision${typeof withText === "object" ? ",g.index_json" : ""} FROM txt_index_chapters c
       JOIN txt_index_generations g ON g.book_id=c.book_id AND g.generation=c.generation
       JOIN txt_index_documents d ON d.book_id=c.book_id AND d.active_generation=c.generation
       WHERE c.book_id=? AND c.generation=? AND c.chapter_index=? AND c.chapter_id=? AND g.state='ready'`)
@@ -560,11 +560,28 @@ const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {}
     const chapter={chapterId:row.chapter_id,index:row.chapter_index,label:row.name,start:row.utf16_start,end:row.utf16_end,
       bodyStart:row.body_utf16_start,byteStart:row.byte_start,byteEnd:row.byte_end,bodyByteStart:row.body_byte_start,
       firstChars:row.first_chars,lastChars:row.last_chars};
-    let text;
-    if(withText){const bytes=await readVerifiedRangeAsync(t.request,t.metadata,row.byte_start,row.byte_end-row.byte_start);
+    let text, textStart=chapter.start;
+    if(withText){
+      let byteStart=row.byte_start,byteEnd=row.byte_end,textEnd=chapter.end;
+      if(typeof withText==="object"){
+        const {start,end}=withText,bodyLength=chapter.end-chapter.bodyStart;
+        if(![start,end].every(Number.isSafeInteger)||start<0||end<=start||end>bodyLength||end-start>2*1024*1024)throw Error("Invalid source text range");
+        const checkpoints=JSON.parse(row.index_json).checkpoints;
+        if(checkpoints){
+          const points=checkpoints;
+          const first=Math.max(chapter.bodyStart,chapter.bodyStart+start-64),last=Math.min(chapter.end,chapter.bodyStart+end+64);
+          let low=0,high=points.length-1;
+          while(low<high){const middle=(low+high+1)>>>1;if(points[middle][1]<=first)low=middle;else high=middle-1;}
+          [byteStart,textStart]=points[low];if(byteStart<chapter.byteStart){byteStart=chapter.byteStart;textStart=chapter.start;}low=0;high=points.length-1;
+          while(low<high){const middle=(low+high)>>>1;if(points[middle][1]<last)low=middle+1;else high=middle;}
+          [byteEnd,textEnd]=points[low];if(byteEnd>chapter.byteEnd){byteEnd=chapter.byteEnd;textEnd=chapter.end;}
+        }
+      }
+      const bytes=await readVerifiedRangeAsync(t.request,t.metadata,byteStart,byteEnd-byteStart);
       text=new TextDecoder(t.metadata.encoding,{fatal:true,ignoreBOM:true}).decode(bytes).replace(/\r\n?/g,"\n");
-      if(text.length!==chapter.end-chapter.start)throw new Error("Chapter source no longer matches index");}
-    return {bookId:t.request.bookId,generation:t.readGeneration,documentRevision:row.document_revision,chapter,text};
+      if(text.length!==textEnd-textStart)throw new Error("Chapter source no longer matches index");
+    }
+    return {bookId:t.request.bookId,generation:t.readGeneration,documentRevision:row.document_revision,chapter,text,textStart};
   };
   run.releaseOwner = (owner) => {
     const opening = openingOwners.get(owner); if (opening) opening.version++;

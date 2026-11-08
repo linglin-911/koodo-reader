@@ -559,13 +559,14 @@ const Viewer = (props: ViewerProps) => {
         readerMode: propsRef.current.readerMode,
         charset: persistentTxt?.encoding || propsRef.current.currentBook.charset,
         txtIndexStore: persistentTxt?.store,
-        // Phase-7 prototype is opt-in per book until phase-8 interaction acceptance.
-        txtContinuousScroll: ConfigService.getAllListConfig("txtContinuousScrollBooks").includes(propsRef.current.currentBook.key),
+        // Supported plain-TXT scroll sessions use the bounded window; a book may opt out.
+        txtContinuousScroll: !ConfigService.getAllListConfig("txtSingleChapterBooks").includes(propsRef.current.currentBook.key),
         onTxtWindowPosition: throttle(() => {
           if (!rendition.isTxtWindowActive?.() || propsRef.current.htmlBook?.rendition !== rendition) return;
           // Read the latest position in the trailing call; the shared throttle retains first-call arguments.
           const latest = rendition.getPosition();
           ConfigService.setObjectConfig(propsRef.current.currentBook.key, latest, "recordLocation");
+          rendition.trigger("page-changed");
           const chapterDocIndex = Number(latest.chapterDocIndex || 0);
           if (chapterDocIndex !== stateRef.current.chapterDocIndex) {
             propsRef.current.handleCurrentChapter(latest.chapterTitle || "");
@@ -835,6 +836,7 @@ const Viewer = (props: ViewerProps) => {
       } else {
         await rendition.goToPosition(
           JSON.stringify({
+            ...bookLocation,
             text: bookLocation.text || "",
             chapterTitle: bookLocation.chapterTitle || "",
             page: bookLocation.page || "",
@@ -851,6 +853,9 @@ const Viewer = (props: ViewerProps) => {
         );
       }
     }
+    rendition.on("txt-window-changed", throttle(() => {
+      if (propsRef.current.htmlBook?.rendition === rendition) void handleHighlight(rendition);
+    }));
     rendition.on("rendered", async () => {
       handleLocation();
       let bookLocation: {

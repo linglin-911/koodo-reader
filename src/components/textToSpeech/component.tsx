@@ -494,6 +494,7 @@ const TextToSpeech = () => {
     setState({ isPaused: true });
   };
   const handleStop = async () => {
+    htmlBook?.rendition.resetTxtAudio?.();
     window.speechSynthesis && window.speechSynthesis.cancel();
     await TTSUtil.stopAudio();
     setState({ isAudioOn: false, isPaused: false, currentIndex: 0 });
@@ -539,6 +540,7 @@ const TextToSpeech = () => {
     await TTSUtil.pauseAudio();
     TTSUtil.pausedMidSentence = false; // 跳转句子时不从暂停位置恢复
     if (nextIndex >= nodeListRef.current.length) {
+      if(htmlBook.rendition.isTxtWindowActive?.()&&!(await htmlBook.rendition.advanceTxtAudio())){setState({isAudioOn:false});return;}
       // Move to next page
       setState({ currentIndex: 0, isPaused: false });
       nodeListRef.current = [];
@@ -608,12 +610,14 @@ const TextToSpeech = () => {
     }
   };
   const handleStartSpeech = () => {
+    htmlBook?.rendition.resetTxtAudio?.();
     setState({ isAudioOn: true, isPaused: false, currentIndex: 0 });
     handleAudio();
   };
   const handleAudio = async () => {
     nodeListRef.current = await handleGetText();
     if (nodeListRef.current.length === 0) {
+      if(htmlBook.rendition.isTxtWindowActive?.())setState({isAudioOn:false});
       return;
     }
     if (nodeListRef.current[0].voiceEngine !== "system") {
@@ -631,7 +635,7 @@ const TextToSpeech = () => {
       await sleep(1000);
     }
     let nodeList = [];
-    let nodeTextList = (await htmlBook.rendition.audioText()).filter(
+    let nodeTextList = (await htmlBook.rendition.audioText(true)).filter(
       (item: string) => item && item.trim()
     );
     let rawNodeList: string[][] = [];
@@ -643,6 +647,7 @@ const TextToSpeech = () => {
     nodeTextList = rawNodeList.flat();
 
     const speechStartIndex = getSpeechStartIndex(nodeTextList);
+    htmlBook.rendition.setTxtAudioSequence?.(nodeTextList,Math.max(0,speechStartIndex));
     if (speechStartIndex > -1) {
       nodeTextList = nodeTextList.slice(speechStartIndex);
     }
@@ -756,6 +761,7 @@ const TextToSpeech = () => {
       }
     }
 
+    if(htmlBook.rendition.isTxtWindowActive?.() && nodeList.length===0)return [];
     if (nodeList.length === 0) {
       if (isReadingRawPDF(currentBook)) {
         let currentPosition = htmlBook.rendition.getPosition();
@@ -785,7 +791,7 @@ const TextToSpeech = () => {
         isReadingRawPDF(currentBook),
         ConfigService.getReaderConfig("textOrientation") === "vertical"
       );
-      htmlBook.rendition.highlightAudioNode(node.text, style);
+      await htmlBook.rendition.highlightAudioNode(node.text, style,index);
       if (index === nodeIndex) {
         let result = await TTSUtil.cacheAudio(
           index,
@@ -846,7 +852,9 @@ const TextToSpeech = () => {
       }
 
       if (isReachPageEnd) {
-        if (isReadingRawPDF(currentBook)) {
+        if(htmlBook.rendition.isTxtWindowActive?.()) {
+          if(index===nodeListRef.current.length-1 && !(await htmlBook.rendition.advanceTxtAudio())) {setState({isAudioOn:false});return;}
+        } else if (isReadingRawPDF(currentBook)) {
           let currentPosition = htmlBook.rendition.getPosition();
           await htmlBook.rendition.goToChapterIndex(
             parseInt(currentPosition.chapterDocIndex) +
@@ -890,7 +898,7 @@ const TextToSpeech = () => {
       isReadingRawPDF(currentBook),
       ConfigService.getReaderConfig("textOrientation") === "vertical"
     );
-    htmlBook.rendition.highlightAudioNode(node.text, style);
+    await htmlBook.rendition.highlightAudioNode(node.text, style,index);
     toast.dismiss("tts-load");
     let res = await handleSystemSpeech(
       index,
@@ -919,7 +927,9 @@ const TextToSpeech = () => {
         isReachPageEnd = true;
       }
       if (isReachPageEnd) {
-        if (isReadingRawPDF(currentBook)) {
+        if(htmlBook.rendition.isTxtWindowActive?.()) {
+          if(index===nodeListRef.current.length-1 && !(await htmlBook.rendition.advanceTxtAudio())) {setState({isAudioOn:false});return;}
+        } else if (isReadingRawPDF(currentBook)) {
           let currentPosition = htmlBook.rendition.getPosition();
           await htmlBook.rendition.goToChapterIndex(
             parseInt(currentPosition.chapterDocIndex) +
