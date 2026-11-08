@@ -1,3 +1,4 @@
+import TxtContentList from "./txtContentList";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import "./contentList.css";
 import { ConfigService } from "../../../assets/lib/kookit-extra-browser.min";
@@ -27,7 +28,7 @@ interface ContentListProps {
   isActive: boolean;
 }
 
-const ContentList = ({ isActive }: ContentListProps) => {
+const TreeContentList = ({ isActive }: ContentListProps) => {
   const currentBook = useAppStore((s) => s.book.currentBook);
   const htmlBook = useAppStore((s) => s.reader.htmlBook);
   const handleCurrentChapter = useAppStore((s) => s.handleCurrentChapter);
@@ -411,4 +412,12 @@ const ContentList = ({ isActive }: ContentListProps) => {
   );
 };
 
+const ContentList = (props: ContentListProps) => {
+  const currentBook = useAppStore((s) => s.book.currentBook);
+  const htmlBook = useAppStore((s) => s.reader.htmlBook);
+  return currentBook.format === "TXT" && htmlBook?.rendition?.getTxtDirectory &&
+    ConfigService.getReaderConfig("isDisableTxtVirtualContents") !== "yes"
+    ? <TxtContentList key={currentBook.key} {...props} />
+    : <TreeContentList {...props} />;
+};
 export default ContentList;

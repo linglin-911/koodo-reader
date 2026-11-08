@@ -81,3 +81,17 @@
   font-size: 15px;
   opacity: 0.64;
 }
+
+/* TXT uses one controlled 40px line, including long Chinese titles. The full
+   title remains available as a tooltip; wrapping cannot change row offsets. */
+.txt-content-container { height: 100%; display: flex; flex-direction: column; }
+.txt-content-container .book-content-header,
+.txt-content-container .book-content-search { flex-shrink: 0; }
+.txt-content-container button { color: inherit; background: transparent; border: 0; font: inherit; }
+.txt-content-viewport { flex: 1; min-height: 0; max-height: 4000px; overflow: auto; overflow-anchor: none; }
+.txt-content-rows { position: relative; list-style: none; margin: 0; padding: 0; }
+.txt-content-row { position: absolute; left: 15px; right: 15px; height: 40px; margin: 0; padding: 0; }
+.txt-content-row .book-content-name { float: none; box-sizing: border-box; width: 100%; height: 40px; padding: 10px 0; text-align: left; gap: 8px; }
+.txt-content-row .book-content-title-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.txt-content-page { flex-shrink: 0; opacity: 0.6; font-size: 12px; }
+.txt-content-row [aria-current="location"] .book-content-title-label { color: red; font-weight: bold; }

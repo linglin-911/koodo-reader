@@ -504,6 +504,30 @@ app
           assert.equal((await service(request, 1)).cacheHit, true);
         }
       );
+      await check("directory is metadata-only, ticket-scoped and pinned across rebuilds", async () => {
+        const reader = await service(request, 1);
+        const originalRead = fs.readSync;
+        let directory;
+        try {
+          fs.readSync = () => { throw new Error("Directory read source bytes"); };
+          directory = await action(reader, { action: "read-directory" });
+        } finally { fs.readSync = originalRead; }
+        assert.deepEqual(directory.chapters, reader.index.chapters.map(({ chapterId, index, label }) => ({ chapterId, index, label })));
+        assert.deepEqual(Object.keys(directory).sort(), ["chapters", "generation"]);
+        await assert.rejects(() => action(reader, { action: "read-directory" }, 2), /foreign/);
+        await action(reader, { action: "invalidate" });
+        const cold = await service(request, 2);
+        await assert.rejects(() => action(cold, { action: "read-directory" }, 2), /unavailable/);
+        await commit(cold, fixture(), 2);
+        const rebuilt = await action(cold, { action: "read-directory" }, 2);
+        assert.notEqual(rebuilt.generation, directory.generation);
+        assert.deepEqual(await action(reader, { action: "read-directory" }), directory);
+        await action(reader, { action: "close" });
+        await assert.rejects(() => action(reader, { action: "read-directory" }), /foreign/);
+        const released = await service(request, 77);
+        service.releaseOwner(77);
+        await assert.rejects(() => action(released, { action: "read-directory" }, 77), /foreign/);
+      });
       await check(
         "ASCII remains indexed; other legacy encodings explicitly use the volatile path",
         async () => {

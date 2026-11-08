@@ -520,6 +520,9 @@ export const scrollContents = (
 ) => {
   let contentBody = document.getElementsByClassName("navigation-body")[0];
   if (!contentBody) return;
+  // TXT virtual rows are selected from reader state and aligned by row index
+  // only on explicit open. DOM lookup cannot locate an unmounted row.
+  if (contentBody.querySelector("[data-txt-virtual-contents]")) return;
   let contentList = contentBody.getElementsByClassName(
     "book-content-title-label"
   );

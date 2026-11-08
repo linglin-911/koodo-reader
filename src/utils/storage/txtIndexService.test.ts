@@ -174,3 +174,14 @@ it("rejects truncated or malformed chapter bytes without returning partial text"
     ).rejects.toThrow();
   }
 });
+
+it("reads the directory with the live ticket and rejects access after close", async () => {
+  const directory = { generation: "ready", chapters: [{ chapterId: "c", index: 0, label: "Title" }] };
+  const invoke = vi.fn().mockResolvedValueOnce({ ticket: "reader", index: null, encoding: "utf-8", persistentSupported: true }).mockResolvedValue(directory);
+  vi.stubGlobal("window", { electronAPI: { invoke } });
+  const source = await openPersistentTxt("book", "", "utf-8", "");
+  expect(await source.store!.readDirectory()).toBe(directory);
+  expect(invoke.mock.calls[1][1]).toMatchObject({ operation: "txt-index", dbName: "notes", ticket: "reader", action: "read-directory" });
+  await source.store!.close();
+  await expect(source.store!.readDirectory()).rejects.toThrow("closed");
+});

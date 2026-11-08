@@ -34,6 +34,10 @@ interface TxtIndexSnapshot {
     fixedChunk: boolean;
   }[];
 }
+export interface TxtDirectory {
+  generation: string | null;
+  chapters: { chapterId: string; index: number; label: string }[];
+}
 const CHAPTER_CHUNK_BYTES = 256 * 1024;
 type Invoke = (command: Record<string, unknown>) => Promise<unknown>;
 type Chapter = TxtIndexSnapshot["chapters"][number];
@@ -59,6 +63,8 @@ const createSource = (
       await command({ action: "commit", index });
       cached = index;
     },
+    readDirectory: async (): Promise<TxtDirectory> =>
+      (await command({ action: "read-directory" })) as TxtDirectory,
     readSource: async () => {
       const result = (await command({ action: "read-source" })) as {
         buffer: Uint8Array;

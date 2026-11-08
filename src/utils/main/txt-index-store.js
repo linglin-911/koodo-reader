@@ -77,6 +77,7 @@ const validateRequest = (c) => {
       "commit",
       "read-source",
       "read-chapter",
+      "read-directory",
       "close",
       "invalidate",
     ].includes(c.action) ||
@@ -437,6 +438,19 @@ const createTxtIndexService = ({ getConnection, now = Date.now }) => {
     if (c.action === "close") {
       tickets.delete(c.ticket);
       return { closed: true };
+    }
+    if (c.action === "read-directory") {
+      // Use the immutable generation pinned by this reader, not the active
+      // pointer (which another reader may have invalidated/rebuilt). No source-file I/O.
+      const db = await getConnection(c.storagePath);
+      const generation = db.prepare(`SELECT generation FROM txt_index_generations
+        WHERE book_id=? AND generation=? AND state='ready'`)
+        .get(t.request.bookId, t.readGeneration);
+      if (!generation) throw new Error("TXT directory unavailable; prepare the index first");
+      const chapters = db.prepare(`SELECT chapter_id AS chapterId,chapter_index AS "index",name AS label
+        FROM txt_index_chapters WHERE book_id=? AND generation=? ORDER BY chapter_index`)
+        .all(t.request.bookId, t.readGeneration);
+      return { generation: t.readGeneration, chapters };
     }
     if (c.action === "read-source") {
       const started = performance.now();
