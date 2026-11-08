@@ -12,7 +12,7 @@ import BookUtil from "../../../utils/file/bookUtil";
 import Note from "../../../models/Note";
 import { useAppStore } from "../../../store/useAppStore";
 
-const LegacyNoteList = () => {
+const LegacyNoteList = (props:{onManage?:()=>void}) => {
   const notes = useAppStore((s) => s.reader.notes);
   const highlights = useAppStore((s) => s.reader.highlights);
   const isSearch = useAppStore((s) => s.manager.isSearch);
@@ -51,7 +51,7 @@ const LegacyNoteList = () => {
     let nextCardList = await ConfigUtil.getNoteWithTags(newTag);
     nextCardList = nextCardList.filter((note) =>
       tabMode === "note"
-        ? note.notes !== "" && note.notes !== "annotation"
+        ? note.notes !== "" && (note.kind ? note.kind === "small" : note.notes !== "annotation")
         : note.notes === ""
     );
     setTag(newTag);
@@ -73,7 +73,8 @@ const LegacyNoteList = () => {
       }
     >
       <div className="note-list-header">
-        <div className="note-tags" style={{ width: "calc(100% - 240px)" }}>
+        {props.onManage&&<button className="book-manage-title" onClick={props.onManage}>{t("Annotations")}</button>}
+        <div className="note-tags" style={{ width: props.onManage ? "calc(100% - 340px)" : "calc(100% - 240px)" }}>
           <NoteTag {...({ handleTag: handleTag } as any)} />
         </div>
         {noteProps.cards.length > 0 && (
@@ -141,5 +142,9 @@ const LegacyNoteList = () => {
   );
 };
 
-const NoteList=()=>isElectron?<AnnotationWorkspace/>:<LegacyNoteList/>;
+const NoteList=()=>{
+  const [workspace,setWorkspace]=useState(false);
+  const {t}=useTranslation();
+  return isElectron&&workspace?<><button className="annotation-workspace-back" onClick={()=>setWorkspace(false)}>{t("Back")}</button><AnnotationWorkspace/></>:<LegacyNoteList onManage={isElectron?()=>setWorkspace(true):undefined}/>;
+};
 export default NoteList;

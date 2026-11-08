@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { invokeMeasuredDatabaseRead } from "./databaseDiagnostics";
+import { invokeMeasuredDatabaseRead, invokeMeasuredDatabaseCommand } from "./databaseDiagnostics";
 
 const command = { statement: "getByBookKeyStatement", statementType: "string" as const,
   executeType: "all" as const, dbName: "notes", data: "private-book", storagePath: "private-path" };
@@ -34,4 +34,20 @@ describe("measured database reads", () => {
     await expect(invokeMeasuredDatabaseRead(async () => { throw failure; },command)).rejects.toBe(failure);
     expect(await invokeMeasuredDatabaseRead(async () => [],command)).toEqual([]);
   });
+});
+
+describe("measured annotation commands",()=>{
+ it("unwraps list and entity results without mistaking list.records for an IPC envelope",async()=>{
+   const log=vi.spyOn(console,"info").mockImplementation(()=>{});
+   const ids:string[]=[];
+   const invoke=async(_channel:string,command:unknown)=>{const {diagnostics}=command as {diagnostics:{requestId:string}};ids.push(diagnostics.requestId);return {result:{records:[{notes:"private-body"}],hasMore:false},diagnostics:{...diagnostics,mainDurationMs:0}};};
+   const rows=await Promise.all([invokeMeasuredDatabaseCommand(invoke,{bookKey:"private-book"},{traceId:"reader-test"}),invokeMeasuredDatabaseCommand(invoke,{})]);
+   expect(rows[0]).toEqual({records:[{notes:"private-body"}],hasMore:false});expect(new Set(ids).size).toBe(2);
+   expect(log.mock.calls.flat().join("")).not.toMatch(/private/);expect(log.mock.calls.flat().join("")).toContain("reader-test");
+ });
+ it("retains a raw result for old hosts and propagates failed writes even if logging fails",async()=>{
+   vi.spyOn(console,"info").mockImplementation(()=>{throw Error("logger");});
+   expect(await invokeMeasuredDatabaseCommand(async()=>({key:"one"}),{})).toEqual({key:"one"});
+   const error=Error("failed transaction");await expect(invokeMeasuredDatabaseCommand(async()=>{throw error;},{})).rejects.toBe(error);
+ });
 });

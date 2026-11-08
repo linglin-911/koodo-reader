@@ -1214,5 +1214,6 @@
   "Unable to load annotation": "Unable to load annotation",
   "Annotation changed or source unavailable; reload and retry": "Annotation changed or source unavailable; reload and retry",
   "Related annotations": "Related annotations",
-  "Search existing small annotations": "Search existing small annotations"
+  "Search existing small annotations": "Search existing small annotations",
+  "Manage bindings": "Manage bindings"
 }

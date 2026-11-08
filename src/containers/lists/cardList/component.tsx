@@ -138,9 +138,9 @@ const CardList = (props: CardListProps) => {
     loadInitialCards();
   }, [props.cards, noteSortCode]);
 
-  const formatTimestamp = (timestamp: string) => {
+  const formatTimestamp = (timestamp: string, fallback:NoteModel["date"]) => {
     try {
-      const date = new Date(parseInt(timestamp));
+      const date = /^\d+$/.test(timestamp) ? new Date(Number(timestamp)) : new Date(fallback.year, fallback.month-1, fallback.day);
       return date.toLocaleString();
     } catch (error) {
       return timestamp;
@@ -167,6 +167,9 @@ const CardList = (props: CardListProps) => {
     } catch (error) {
       bookLocation.cfi = note.cfi;
       bookLocation.chapterTitle = note.chapter;
+    }
+    if (bookLocation.annotationUnbound || (bookLocation.annotationBindingId && bookLocation.annotationStatus !== "active")) {
+      toast(t("Unbound annotation"));return;
     }
     if (bookLocation.fingerprint) {
       bookLocation.chapterDocIndex = bookLocation.page - 1 + "";
@@ -205,7 +208,7 @@ const CardList = (props: CardListProps) => {
               className="card-list-item-title"
               style={{ padding: 15, opacity: 0.6 }}
             >
-              {formatTimestamp(item.key)}
+              {formatTimestamp(item.key,item.date)}
             </div>
             <div className="card-list-item-text-parent">
               <div className="card-list-item-note">

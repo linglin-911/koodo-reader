@@ -35,8 +35,7 @@ export async function createHighlight(params: DigestParams): Promise<void> {
   if (!htmlBook) return;
   if (isElectron) {
     const binding=await captureAnnotation(currentBook,htmlBook.rendition,chapterDocIndex,chapter,color);
-    const note=await AnnotationService.save({bookKey:currentBook.key,kind:"small",notes:"",tag:[]});
-    await AnnotationService.bind(note.key,binding);
+    await AnnotationService.create({bookKey:currentBook.key,kind:"small",notes:"",tag:[]},binding);
     await restoreAnnotations(currentBook,htmlBook.rendition,chapterDocIndex);
     onSuccess?.();return;
   }

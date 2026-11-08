@@ -1216,5 +1216,6 @@
   "Unable to load annotation": "无法加载批注",
   "Annotation changed or source unavailable; reload and retry": "批注已变化或原文不可用，请重新加载后重试",
   "Related annotations": "本章相关批注",
-  "Search existing small annotations": "搜索已有小批注"
+  "Search existing small annotations": "搜索已有小批注",
+  "Manage bindings": "管理绑定"
 }

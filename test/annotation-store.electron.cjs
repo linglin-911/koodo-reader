@@ -232,6 +232,38 @@ app
           }
         }
       );
+      await check("selected-text creation validates before publishing and rolls back both rows on binding write failure", async () => {
+        const count=()=>db.prepare("SELECT count(*) n FROM notes").get().n;
+        const original=count();
+        const draft={bookKey:"fixture",kind:"small",notes:"must remain in editor on failure",tag:["atomic"]};
+        await assert.rejects(()=>call("create",{note:draft,binding:anchor(0,0,99999)}));
+        assert.equal(count(),original);
+        db.exec("CREATE TRIGGER fail_atomic BEFORE INSERT ON note_bindings BEGIN SELECT RAISE(ABORT,'injected atomic failure'); END");
+        try {await assert.rejects(()=>call("create",{note:draft,binding:anchor()}),/injected atomic failure/);}
+        finally{db.exec("DROP TRIGGER fail_atomic");}
+        assert.equal(count(),original);
+        const active=db.prepare("SELECT active_generation FROM txt_index_documents WHERE book_id='fixture'").get().active_generation;
+        const racing=createAnnotationService({getConnection:connection,loadRegistry:async()=>SqlStatement,Database,describeTxt:async(...args)=>{
+          const snapshot=await txt.describeChapter(...args);db.prepare("UPDATE txt_index_documents SET active_generation=NULL WHERE book_id='fixture'").run();return snapshot;
+        }});
+        try{await assert.rejects(()=>racing({dbName:"notes",storagePath:storage,action:"create",note:draft,binding:anchor()},1),/Index changed/);}
+        finally{db.prepare("UPDATE txt_index_documents SET active_generation=? WHERE book_id='fixture'").run(active);}
+        assert.equal(count(),original);
+        const result=await call("create",{note:draft,binding:anchor()});
+        assert.equal(result.bindings.length,1);assert.equal(result.notes,draft.notes);
+        await call("delete",{key:result.key,version:result.version});
+        assert.equal(count(),original);
+      });
+      await check("new annotation reads carry private-free request/trace and real SQL stage timings", async () => {
+        const logs=[];
+        const measured=createAnnotationService({getConnection:connection,describeTxt:(...args)=>txt.describeChapter(...args),loadRegistry:async()=>SqlStatement,Database,log:line=>logs.push(line)});
+        const result=await measured({dbName:"notes",storagePath:storage,action:"list",diagnostics:{requestId:"atomic-diag-1",traceId:"reader-test"}},1);
+        assert.ok(Array.isArray(result.result.records));
+        assert.equal(result.diagnostics.requestId,"atomic-diag-1");assert.equal(result.diagnostics.traceId,"reader-test");
+        assert.ok(result.diagnostics.statementCount>0);
+        for(const stage of ["registryDurationMs","connectionDurationMs","migrationDurationMs","prepareDurationMs","executeDurationMs","outputConversionDurationMs"])assert.ok(result.diagnostics[stage]>=0,stage);
+        assert.ok(!logs.join("").includes(storage));assert.ok(!logs.join("").includes("must remain"));
+      });
       await check(
         "three independent entities support unbound creation and isolated tags/body",
         async () => {

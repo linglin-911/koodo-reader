@@ -480,10 +480,8 @@ const txtIndexService = createTxtIndexService({
   },
 });
 const annotationService = createAnnotationService({
-  getConnection: async storagePath => {
-    const { SqlStatement } = await import("./src/assets/lib/kookit-extra.min.mjs");
-    return getDBConnection("notes",storagePath,SqlStatement.sqlStatement);
-  },
+  getConnection: (storagePath, statements) => getDBConnection("notes", storagePath, statements),
+  log: message => log.info(message),
   loadRegistry: async () => (await import("./src/assets/lib/kookit-extra.min.mjs")).SqlStatement,
   describeTxt: (...args) => txtIndexService.describeChapter(...args),
   Database,
@@ -1596,10 +1594,7 @@ const createMainWin = () => {
   });
   ipcMain.handle("database-command", async (event, config) => {
     if (config?.operation === "annotations") {
-      const started=performance.now();
-      const result=await annotationService(config,event.sender.id);
-      log.info(`[DIAG][Annotations] ${JSON.stringify({action:config.action,count:result?.records?.length,durationMs:Math.round((performance.now()-started)*10)/10})}`);
-      return result;
+      return annotationService(config, event.sender.id);
     }
     if (config?.dbName === "notes" && config?.operation !== "txt-index") throw new Error("Use controlled annotation commands for notes");
     if (config?.operation === "txt-index") {

@@ -59,3 +59,25 @@ export const invokeMeasuredDatabaseRead = async <T>(
     throw error;
   }
 };
+
+// Object/list/write commands use an explicit result envelope; list.records is
+// user data and must not be confused with the original raw-array protocol.
+export const invokeMeasuredDatabaseCommand = async <T>(
+  invoke:(channel:string,command:unknown)=>Promise<T | {result:T;diagnostics:{requestId:string;mainDurationMs:number}}>,
+  command:Record<string,unknown>, context:DatabaseReadContext={}
+):Promise<T> => {
+  const requestId=`db-${clientId}-${Date.now().toString(36)}-${(++sequence).toString(36)}`;
+  const start=performance.now();
+  const traceId=/^[a-zA-Z0-9-]{1,96}$/.test(context.traceId || "")?context.traceId:undefined;
+  try {
+    const response=await invoke("database-command",{...command,diagnostics:{requestId,traceId}});
+    const received=performance.now();
+    const wrapped=response as {result:T;diagnostics?:{requestId:string;mainDurationMs:number}};
+    const main=wrapped?.diagnostics?.requestId===requestId?wrapped.diagnostics:undefined;
+    const result=main?wrapped.result:response as T;
+    safeLog({requestId,traceId,operation:"annotations",ipcRoundTripDurationMs:Math.round((received-start)*10)/10,
+      mainDurationMs:main?.mainDurationMs,transportAndSchedulingDurationMs:main?Math.round(Math.max(0,received-start-main.mainDurationMs)*10)/10:undefined,
+      rendererResultDurationMs:Math.round((performance.now()-received)*10)/10});
+    return result;
+  } catch(error){safeLog({requestId,traceId,failed:true,ipcRoundTripDurationMs:Math.round((performance.now()-start)*10)/10});throw error;}
+};

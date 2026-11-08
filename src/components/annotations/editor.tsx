@@ -149,7 +149,7 @@ export default function AnnotationEditor(props: Props) {
     }
   };
   const save = async () => {
-    let value = await AnnotationService.save({
+    const data = {
       key: note?.key,
       version: note?.version,
       bookKey,
@@ -160,15 +160,11 @@ export default function AnnotationEditor(props: Props) {
         .split(",")
         .map((tag) => tag.trim())
         .filter(Boolean),
-    });
-    apply(value); // Entity text remains editable if binding validation fails.
-    if (!note && anchorRef.current) {
-      value = await AnnotationService.bind(value.key, {
-        ...anchorRef.current,
-        style: highlightUtil.formatHighlightValue(highlight),
-      });
-      anchorRef.current = null;
-    }
+    };
+    const value = !note && anchorRef.current
+      ? await AnnotationService.create(data, {...anchorRef.current,style:highlightUtil.formatHighlightValue(highlight)})
+      : await AnnotationService.save(data);
+    anchorRef.current = null;
     apply(value);
     toast.success(t("Saved"));
   };

@@ -1,3 +1,4 @@
+import { invokeMeasuredDatabaseCommand, DatabaseReadContext } from "./databaseDiagnostics";
 import { getStorageLocation } from "../common";
 export type AnnotationKind = "small" | "chapter" | "range";
 export interface ChapterSnapshot {
@@ -72,16 +73,19 @@ export interface BindingInput {
 }
 export const annotationCommand = <T = unknown>(
   action: string,
-  data: Record<string, unknown> = {}
+  data: Record<string, unknown> = {},
+  context: DatabaseReadContext = {}
 ): Promise<T> =>
-  window.electronAPI.invoke("database-command", {
+  invokeMeasuredDatabaseCommand<T>((channel,command)=>window.electronAPI.invoke(channel,command), {
     operation: "annotations",
     dbName: "notes",
     storagePath: getStorageLocation(),
     action,
     ...data,
-  });
+  }, context);
 export const AnnotationService = {
+  create: (note:{bookKey:string;kind:AnnotationKind;notes:string;tag:string[];title?:string},binding:BindingInput) =>
+    annotationCommand<AnnotationEntity>("create",{note,binding}),
   list: (filter: Record<string, unknown> = {}) =>
     annotationCommand<{ records: AnnotationEntity[]; hasMore: boolean }>(
       "list",
@@ -137,7 +141,7 @@ export const AnnotationService = {
     }),
   delete: (note: Pick<AnnotationEntity, "key" | "version">) =>
     annotationCommand("delete", { key: note.key, version: note.version }),
-  reading: (data: Record<string, unknown>) =>
+  reading: (data: Record<string, unknown>, context: DatabaseReadContext = {}) =>
     annotationCommand<
       Array<{
         key: string;
@@ -151,7 +155,7 @@ export const AnnotationService = {
         chapterIndex: number;
         txtAnchor?: { start: number; end: number };
       }>
-    >("reading", data),
+    >("reading", data, context),
   export: () => annotationCommand("export"),
   import: (backup: unknown) => annotationCommand("import", { backup }),
   importDatabase: (buffer: ArrayBuffer) =>

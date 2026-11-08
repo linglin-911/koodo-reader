@@ -1,3 +1,4 @@
+const { runMeasuredAnnotationCommand } = require("./annotation-diagnostics");
 const requireChange = result => { if (result.changes !== 1)
     throw new Error("Binding changed; reload before editing"); return result; };
 // Formal annotation data. All mutations use this controlled notes.db interface.
@@ -17,6 +18,7 @@ const ACTIONS = new Set([
     "get",
     "list",
     "save",
+    "create",
     "delete",
     "remove-tag",
     "style",
@@ -104,7 +106,7 @@ const bindings = (db, key) => Object.entries(TABLES).flatMap(([kind, table]) => 
     .prepare(`SELECT * FROM ${table} WHERE note_key=? ORDER BY rowid`)
     .all(key)
     .map((r) => ({ ...bindingDto(r), kind })));
-const dto = (db, row, details = true) => {
+const annotationDto = (db, row, details = true) => {
     if (!row)
         return null;
     const all = details ? bindings(db, row.key) : [];
@@ -178,13 +180,14 @@ const boundary = (text, index) => index === 0 ||
         text.charCodeAt(index) <= 0xdfff &&
         text.charCodeAt(index - 1) >= 0xd800 &&
         text.charCodeAt(index - 1) <= 0xdbff);
-const createAnnotationService = ({ getConnection, describeTxt, Database, loadRegistry = async () => null, }) => {
-    const get = async (storage) => {
+const createAnnotationService = ({ getConnection, describeTxt, Database, loadRegistry = async () => null, log = () => {}, }) => {
+    const get = async (storage, metrics) => {
         if (!validString(storage, 32768) || !path.isAbsolute(storage))
             throw new Error("Invalid annotation storage");
-        const db = await getConnection(storage);
-        await ensureAnnotationSchema(db);
-        return db;
+        const registry = await metrics.asyncStage("registryDurationMs", loadRegistry);
+        const db = await metrics.asyncStage("connectionDurationMs", () => getConnection(storage, registry?.sqlStatement));
+        await metrics.asyncStage("migrationDurationMs", () => ensureAnnotationSchema(db));
+        return metrics.database(db);
     };
     const drawingDto = async (raw) => raw
         ? { ...(await loadRegistry()).sqliteToJson.notes(raw), kind: "drawing" }
@@ -313,10 +316,13 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
             return { notes: data.notes.length, bindings: ids.size };
         })();
     };
-    return async (c, owner) => {
+    const run = async (c, owner, metrics) => {
         if (!c || c.dbName !== "notes" || !ACTIONS.has(c.action))
             throw new Error("Invalid annotation command");
-        const db = await get(c.storagePath);
+        metrics.setAction(c.action); // Only whitelisted action names may enter logs.
+        const db = await get(c.storagePath, metrics);
+        const describeChapter = (...args) => metrics.asyncStage("sourceValidationDurationMs", () => describeTxt(...args));
+        const dto = (db, row, details = true) => metrics.convert(() => annotationDto(db, row, details));
         if (c.action === "export")
             return exportData(db);
         if (c.action === "import")
@@ -417,7 +423,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
             if (c.chapterIndex !== undefined) {
                 if (!c.bookKey)
                     throw new Error("Related annotations require a book");
-                const current = await describeTxt(owner, c.sourceTicket, c.chapterIndex, c.chapterId, false);
+                const current = await describeChapter(owner, c.sourceTicket, c.chapterIndex, c.chapterId, false);
                 if (current.bookId !== c.bookKey)
                     throw new Error("Cross-book related query");
                 where.push("(" +
@@ -455,10 +461,13 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
             return { records: result, hasMore: result.length === limit };
         }
         if (c.action === "save") {
+            const {n,key,book,body,title,tag,now} = metrics.input(() => {
             const n = c.note;
             if (!n || !TABLES[n.kind])
                 throw new Error("Invalid annotation entity");
             const key = n.key ? identifier(n.key) : crypto.randomUUID(), book = identifier(n.bookKey), body = requireString(n.notes || "", 16 * 1024 * 1024), title = requireString(n.title || "", 4096), tag = JSON.stringify(tags(n.tag || [])), now = Date.now();
+                return {n,key,book,body,title,tag,now};
+            });
             const old = db.prepare("SELECT * FROM notes WHERE key=?").get(key);
             if (old &&
                 (n.version !== old.version ||
@@ -562,7 +571,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                     status = "pending";
                     if (c.sourceTicket) {
                         try {
-                            const snap = await describeTxt(owner, c.sourceTicket, row.start_index, row.chapter_id, false);
+                            const snap = await describeChapter(owner, c.sourceTicket, row.start_index, row.chapter_id, false);
                             if (snap.generation === row.generation)
                                 status = row.unbound_from || "active";
                         }
@@ -573,10 +582,19 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
             }
             return dto(db, db.prepare("SELECT * FROM notes WHERE key=?").get(row.note_key));
         }
-        if (c.action === "bind") {
-            const note = db
-                .prepare("SELECT * FROM notes WHERE key=?")
-                .get(identifier(c.noteKey));
+        if (c.action === "bind" || c.action === "create") {
+            const creating = c.action === "create";
+            // Validate all user fields before touching formal data. Source reads
+            // below also happen outside the transaction; publication is atomic.
+            const note = creating ? metrics.input(() => {
+                const n = c.note;
+                if (!n || n.key || !TABLES[n.kind]) throw new Error("Invalid new annotation");
+                const now = Date.now(), today = new Date(now);
+                return {key:crypto.randomUUID(), bookKey:identifier(n.bookKey), kind:n.kind,
+                    title:requireString(n.title || "",4096), notes:requireString(n.notes || "",16*1024*1024),
+                    tag:JSON.stringify(tags(n.tag || [])),date:JSON.stringify({year:today.getFullYear(),month:today.getMonth()+1,day:today.getDate()}),
+                    created_at:now,updated_at:now,version:1};
+            }) : db.prepare("SELECT * FROM notes WHERE key=?").get(identifier(c.noteKey));
             if (!note)
                 throw new Error("Annotation is unavailable");
             const input = c.binding;
@@ -584,7 +602,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 throw new Error("Invalid binding format");
             let anchor, generation = null, chapterId = null, startIndex, endIndex, quote = "", prefix = "", suffix = "", relativeStart = null, relativeEnd = null;
             if (input.format === "TXT") {
-                const first = await describeTxt(owner, input.sourceTicket, input.chapterIndex, input.chapterId, note.kind === "small");
+                const first = await describeChapter(owner, input.sourceTicket, input.chapterIndex, input.chapterId, note.kind === "small");
                 if (first.bookId !== note.bookKey)
                     throw new Error("Cross-book annotation binding");
                 generation = first.generation;
@@ -592,7 +610,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 startIndex = first.chapter.index;
                 endIndex = startIndex;
                 if (note.kind === "range") {
-                    const last = await describeTxt(owner, input.sourceTicket, input.endChapterIndex, input.endChapterId, false);
+                    const last = await describeChapter(owner, input.sourceTicket, input.endChapterIndex, input.endChapterId, false);
                     if (last.bookId !== note.bookKey ||
                         last.generation !== generation ||
                         last.chapter.index < startIndex)
@@ -615,6 +633,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                         documentRevision: first.documentRevision,
                     };
                 if (note.kind === "small") {
+                  metrics.input(() => {
                     const body = first.text.slice(first.chapter.bodyStart - first.chapter.start);
                     relativeStart = input.start;
                     relativeEnd = input.end;
@@ -630,6 +649,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                     suffix = Array.from(body.slice(relativeEnd)).slice(0, 32).join("");
                     if (quote.length > 2 * 1024 * 1024)
                         throw new Error("Selection is too long");
+                  });
                 }
             }
             else {
@@ -661,6 +681,10 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                         .prepare("SELECT active_generation FROM txt_index_documents WHERE book_id=?")
                         .get(note.bookKey)?.active_generation !== generation)
                     throw new Error("Index changed; reopen before binding");
+                if (creating) {
+                    if (c.replaceId) throw new Error("Cannot replace a binding while creating");
+                    db.prepare("INSERT INTO notes(key,bookKey,kind,title,notes,tag,date,created_at,updated_at,version) VALUES(@key,@bookKey,@kind,@title,@notes,@tag,@date,@created_at,@updated_at,@version)").run(note);
+                }
                 if (c.replaceId) {
                     const old = db
                         .prepare(`SELECT * FROM ${table} WHERE id=? AND note_key=?`)
@@ -681,7 +705,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 throw new Error("Invalid chapter");
             let generation = null;
             if (c.format === "TXT") {
-                const current = await describeTxt(owner, c.sourceTicket, index, c.chapterId, false);
+                const current = await describeChapter(owner, c.sourceTicket, index, c.chapterId, false);
                 if (current.bookId !== book)
                     throw new Error("Cross-book reading");
                 generation = current.generation;
@@ -690,7 +714,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 .prepare(`SELECT b.*,n.notes!='' AS hasNote FROM note_bindings b JOIN notes n ON n.key=b.note_key
         WHERE b.book_id=? AND b.format=? AND b.start_index=? AND b.status='active' ${generation ? "AND b.generation=?" : ""}`)
                 .all(book, c.format, index, ...(generation ? [generation] : []));
-            return rows.map((b) => {
+            return metrics.convert(() => rows.map((b) => {
                 const anchor = JSON.parse(b.anchor_json);
                 return {
                     key: b.id,
@@ -706,10 +730,11 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                         ? { start: b.relative_start, end: b.relative_end }
                         : undefined,
                 };
-            });
+            }));
         }
         throw new Error("Unknown annotation operation");
     };
+    return (c, owner) => runMeasuredAnnotationCommand(c, metrics => run(c, owner, metrics), log);
 };
 module.exports = {
     createAnnotationService,

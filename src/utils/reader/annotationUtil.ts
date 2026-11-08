@@ -3,6 +3,7 @@ import { getIframeDoc } from "./docUtil";
 import type Book from "../../models/Book";
 import { useAppStore } from "../../store/useAppStore";
 interface Rendition {
+  diagnosticTraceId?: string;
   getAnnotationAnchor?: () => BindingInput;
   getTxtChapterSnapshot?: () => { chapterId: string };
   txtIndexStore?: { sourceTicket?: string };
@@ -73,7 +74,7 @@ export const restoreAnnotations = async (
     chapterIndex: index,
     sourceTicket: rendition.txtIndexStore?.sourceTicket,
     chapterId: chapter?.chapterId,
-  });
+  }, { traceId: rendition.diagnosticTraceId });
   if (book.format !== "TXT") {
     const drawings = (
       await AnnotationService.list({ bookKey: book.key, tab: "annotation" })

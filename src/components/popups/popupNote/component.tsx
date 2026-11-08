@@ -1,3 +1,4 @@
+import NativeTextPopup from "./nativeTextPopup";
 import { isElectron } from "react-device-detect";
 import AnnotationEditor from "../../annotations/editor";
 import { useTranslation } from "react-i18next";
@@ -295,13 +296,14 @@ const LegacyPopupNote = (props: PopupNoteProps) => {
 const NativePopupNote = (props: PopupNoteProps) => {
   const noteKey=useAppStore(s=>s.reader.noteKey),bindingId=useAppStore(s=>s.reader.noteBindingId),append=useAppStore(s=>s.reader.annotationAppend);
   const currentBook=useAppStore(s=>s.book.currentBook),htmlBook=useAppStore(s=>s.reader.htmlBook);
-  const [drawing,setDrawing]=useState(false),[loadedKey,setLoadedKey]=useState<string|null>(null);
-  useEffect(()=>{let active=true;setDrawing(false);if(noteKey)void DatabaseService.getRecord(noteKey,"notes").then(note=>{if(active){setDrawing(note?.kind==="drawing");setLoadedKey(noteKey);}});return()=>{active=false;};},[noteKey]);
+  const [kind,setKind]=useState("small"),[loadedKey,setLoadedKey]=useState<string|null>(null);
+  useEffect(()=>{let active=true;if(noteKey)void DatabaseService.getRecord(noteKey,"notes").then(note=>{if(active){setKind(note?.kind||"small");setLoadedKey(noteKey);}}).catch(()=>{if(active){setKind("small");setLoadedKey(noteKey);}});return()=>{active=false;};},[noteKey]);
+  const close=()=>{const store=useAppStore.getState();store.handleOpenMenu(false);store.handleShowPopupNote(false);store.handleMenuMode("");store.handleNoteKey("");};
   if(noteKey&&loadedKey!==noteKey)return null;
-  if(drawing)return <LegacyPopupNote {...props}/>;
-  return <AnnotationEditor key={noteKey||(append?"append":"new")} noteKey={noteKey||undefined} bindingId={bindingId} append={append} bookKey={currentBook?.key}
-    selection={!noteKey&&!!htmlBook?.rendition} chapterIndex={props.chapterDocIndex} chapter={props.chapter}
-    onClose={()=>{const store=useAppStore.getState();store.handleOpenMenu(false);store.handleShowPopupNote(false);store.handleMenuMode("");store.handleNoteKey("");}}/>;
+  if(noteKey&&kind==="drawing")return <LegacyPopupNote {...props}/>;
+  if(append||(noteKey&&kind!=="small"))return <AnnotationEditor key={noteKey||"append"} noteKey={noteKey||undefined} bindingId={bindingId} append={append} bookKey={currentBook?.key}
+    selection={!noteKey&&!!htmlBook?.rendition} chapterIndex={props.chapterDocIndex} chapter={props.chapter} onClose={close}/>;
+  return <NativeTextPopup key={`${noteKey}:${bindingId}`} {...props} noteKey={noteKey} bindingId={bindingId} onClose={close}/>;
 };
 const PopupNote=(props:PopupNoteProps)=>isElectron?<NativePopupNote {...props}/>:<LegacyPopupNote {...props}/>;
 export default PopupNote;

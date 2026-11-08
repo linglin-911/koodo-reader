@@ -255,7 +255,7 @@ class ConfigUtil {
     order: string = "DESC"
   ) {
     if (isElectron) {
-      return listAnnotationPages({bookKey,tab:type,order});
+      return listAnnotationPages({bookKey,tab:type,order,kind:"small"});
     } else {
       let notes: Note[] = await DatabaseService.getAllRecords("notes");
       let filteredNotes = notes.filter((note) => {
@@ -295,7 +295,7 @@ class ConfigUtil {
     type: string
   ) {
     if (isElectron) {
-      return listAnnotationPages({keyword,bookKey,tab:type});
+      return listAnnotationPages({keyword,bookKey,tab:type,kind:"small"});
     } else {
       let notes = await DatabaseService.getAllRecords("notes");
       let filteredNotes = notes.filter(
@@ -350,7 +350,7 @@ class ConfigUtil {
   }
   static async getNoteWithTags(tags: string[]) {
     if (isElectron) {
-      return listAnnotationPages({tags});
+      return listAnnotationPages({tags,kind:"small"});
     } else {
       let notes = await DatabaseService.getAllRecords("notes");
       let filteredNotes = notes.filter((note) => {
