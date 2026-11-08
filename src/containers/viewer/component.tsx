@@ -189,8 +189,11 @@ const Viewer = (props: ViewerProps) => {
     setState((prev) => ({ ...prev, ...patch }));
   const txtOpenRef = useRef<AbortController | null>(null);
   const [txtProgress, setTxtProgress] = useState<TxtBuildProgress | null>(null);
-  const resizeHandlerRef = useRef<(() => void) | null>(null);
+  const resizeHandlerRef = useRef<ReturnType<typeof throttle> | null>(null);
   const pendingRerenderRef = useRef(false);
+  const renditionRef = useRef<ViewerState["rendition"]>(null);
+  const openVersionRef = useRef(0);
+  const rerenderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevWidthPropsRef = useRef({
     margin,
     scale,
@@ -359,6 +362,7 @@ const Viewer = (props: ViewerProps) => {
   };
   const handleRenderBook = async () => {
     if (lock) return;
+    const openVersion = ++openVersionRef.current;
     const openStartedAt = performance.now();
     let { key, path, format, name } = propsRef.current.currentBook;
     console.info(
@@ -376,11 +380,12 @@ const Viewer = (props: ViewerProps) => {
       window.currentBookKey = "";
     }
     propsRef.current.handleHtmlBook(null);
-    if (stateRef.current.rendition) {
-      // 停止旧渲染实例的自动滚动定时器，避免重渲染后旧循环继续占用滚动容器
-      stateRef.current.rendition.autoScroll?.(0, "no");
-      stateRef.current.rendition.autoScrollPDF?.("no");
-      stateRef.current.rendition.removeContent();
+    const previous = renditionRef.current || stateRef.current.rendition;
+    renditionRef.current = null;
+    if (previous) {
+      previous.autoScroll?.(0, "no");
+      previous.autoScrollPDF?.("no");
+      previous.removeContent();
     }
     txtOpenRef.current?.abort();
     let result;
@@ -548,6 +553,7 @@ const Viewer = (props: ViewerProps) => {
       ocrQueue = task.catch(() => undefined);
       return task;
     };
+    if (openVersion !== openVersionRef.current) { await persistentTxt?.store?.close(); return; }
     const renditionStartedAt = performance.now();
     let rendition = BookHelper.getRendition(
       result,
@@ -714,6 +720,7 @@ const Viewer = (props: ViewerProps) => {
       result = null;
       persistentTxt.buffer = new ArrayBuffer(0);
     }
+    renditionRef.current = rendition;
     const traceId = rendition.diagnosticTraceId || "unknown";
     console.info(
       `[DIAG][Reader] createRendition:complete ${JSON.stringify({
@@ -751,6 +758,7 @@ const Viewer = (props: ViewerProps) => {
     );
 
     const restStartedAt = performance.now();
+    if (openVersion !== openVersionRef.current) { await rendition.removeContent(); return; }
     await handleRest(rendition);
     console.info(
       `[DIAG][Reader] handleRest:complete ${JSON.stringify({
@@ -857,9 +865,12 @@ const Viewer = (props: ViewerProps) => {
         );
       }
     }
-    rendition.on("txt-window-changed", throttle(() => {
+    if (renditionRef.current !== rendition) return;
+    const refreshWindowHighlights = throttle(() => {
       if (propsRef.current.htmlBook?.rendition === rendition) void handleHighlight(rendition);
-    }));
+    });
+    rendition.on("txt-window-changed", refreshWindowHighlights);
+    rendition.addCleanup?.(() => refreshWindowHighlights.cancel());
     rendition.on("rendered", async () => {
       handleLocation();
       let bookLocation: {
@@ -913,8 +924,11 @@ const Viewer = (props: ViewerProps) => {
       // rendition.tranformText();
       handleBindGesture();
       await handleHighlight(rendition);
+      if (renditionRef.current !== rendition) return;
       lock = true;
-      setTimeout(() => {
+      if (rerenderTimerRef.current) clearTimeout(rerenderTimerRef.current);
+      rerenderTimerRef.current = setTimeout(() => {
+        rerenderTimerRef.current = null;
         lock = false;
         if (pendingRerenderRef.current) {
           pendingRerenderRef.current = false;
@@ -944,12 +958,16 @@ const Viewer = (props: ViewerProps) => {
       let doc = docs[i];
       if (!doc || gestureBoundDocs.has(doc)) continue;
       gestureBoundDocs.add(doc);
+      const rendition = renditionRef.current;
+      const controller = rendition?.format === "TXT" ? new AbortController() : undefined;
+      rendition?.addCleanup?.(() => { controller?.abort(); gestureBoundDocs.delete(doc); });
+      const listenerOptions = controller ? { signal: controller.signal } : undefined;
       doc.addEventListener("click", () => {
         propsRef.current.handleLeaveReader("left");
         propsRef.current.handleLeaveReader("right");
         propsRef.current.handleLeaveReader("top");
         propsRef.current.handleLeaveReader("bottom");
-      });
+      }, listenerOptions);
       doc.addEventListener("pointerup", (event) => {
         if (isPaginatedBook(propsRef.current.currentBook)) {
           let ownerDoc = (event.target as HTMLElement).ownerDocument;
@@ -974,7 +992,7 @@ const Viewer = (props: ViewerProps) => {
 
         var rect = selection.getRangeAt(0).getBoundingClientRect();
         updateState({ rect });
-      });
+      }, listenerOptions);
       doc.addEventListener("contextmenu", (event) => {
         if (isPaginatedBook(propsRef.current.currentBook)) {
           let ownerDoc = (event.target as HTMLElement).ownerDocument;
@@ -1005,7 +1023,7 @@ const Viewer = (props: ViewerProps) => {
         if (!selection || selection.rangeCount === 0) return;
         var rect = selection.getRangeAt(0).getBoundingClientRect();
         updateState({ rect });
-      });
+      }, listenerOptions);
     }
   };
 
@@ -1055,9 +1073,20 @@ const Viewer = (props: ViewerProps) => {
     resizeHandlerRef.current = resizeHandler;
     window.addEventListener("resize", resizeHandler);
     return () => {
+      openVersionRef.current++;
       txtOpenRef.current?.abort();
+      pendingRerenderRef.current = false;
+      if (rerenderTimerRef.current) clearTimeout(rerenderTimerRef.current);
+      rerenderTimerRef.current = null; lock = false;
+      const rendition = renditionRef.current;
+      renditionRef.current = null;
+      if (rendition?.format === "TXT") {
+        rendition.removeContent();
+        if (propsRef.current.htmlBook?.rendition === rendition) propsRef.current.handleHtmlBook(null);
+      }
       if (resizeHandlerRef.current) {
         window.removeEventListener("resize", resizeHandlerRef.current);
+        resizeHandlerRef.current.cancel();
         resizeHandlerRef.current = null;
       }
     };

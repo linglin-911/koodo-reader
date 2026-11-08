@@ -410,6 +410,17 @@ export const bindHtmlEvent = (
 ) => {
   if (boundDocs.has(doc)) return;
   boundDocs.add(doc);
+  const controller = rendition.format === "TXT" ? new AbortController() : undefined;
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  rendition.addCleanup?.(() => {
+    controller?.abort(); boundDocs.delete(doc);
+    for (const timer of timers) clearTimeout(timer); timers.clear(); lock = false;
+  });
+  const unlock = () => {
+    if (controller?.signal.aborted) return;
+    const timer = setTimeout(() => { timers.delete(timer); lock = false; }, getThrottleTime());
+    timers.add(timer);
+  };
   const key = book.key;
   const format = book.format;
   doc.addEventListener(
@@ -418,10 +429,11 @@ export const bindHtmlEvent = (
       if (lock) return;
       lock = true;
       await arrowKeys(rendition, event, readerMode, book);
+      if (controller?.signal.aborted) return;
       handleLocation(key, rendition);
-      setTimeout(() => (lock = false), getThrottleTime());
+      unlock();
     },
-    { passive: false }
+    { passive: false, signal: controller?.signal }
   );
 
   doc.addEventListener(
@@ -468,6 +480,7 @@ export const bindHtmlEvent = (
           );
         } else {
           await sleep(200);
+          if (controller?.signal.aborted) return;
           await rendition.record();
           if (
             Math.abs(event.deltaX) === 0 &&
@@ -489,10 +502,11 @@ export const bindHtmlEvent = (
           await mouseChrome(rendition, event.deltaX, true);
         }
       }
+      if (controller?.signal.aborted) return;
       handleLocation(key, rendition);
-      setTimeout(() => (lock = false), getThrottleTime());
+      unlock();
     },
-    { passive: false }
+    { passive: false, signal: controller?.signal }
   );
 
   window.addEventListener(
@@ -501,14 +515,16 @@ export const bindHtmlEvent = (
       if (lock) return;
       lock = true;
       await arrowKeys(rendition, event, readerMode, book);
+      if (controller?.signal.aborted) return;
       handleLocation(key, rendition);
-      setTimeout(() => (lock = false), getThrottleTime());
+      unlock();
     },
-    { passive: false }
+    { passive: false, signal: controller?.signal }
   );
 
   if (ConfigService.getReaderConfig("isTouch") === "yes") {
     const mc = new Hammer(doc);
+    rendition.addCleanup?.(() => mc.destroy());
     mc.on("panleft panright panup pandown", async (event: any) => {
       if (readerMode === "scroll") {
         return;
@@ -516,8 +532,9 @@ export const bindHtmlEvent = (
       if (lock || event.pointerType === "mouse") return;
       lock = true;
       await gesture(rendition, event.type);
+      if (controller?.signal.aborted) return;
       handleLocation(key, rendition);
-      setTimeout(() => (lock = false), getThrottleTime());
+      unlock();
     });
   }
 
@@ -528,12 +545,14 @@ export const bindHtmlEvent = (
       lock = true;
       if (readerMode === "scroll") {
         await sleep(200);
+        if (controller?.signal.aborted) return;
         await rendition.record();
       }
+      if (controller?.signal.aborted) return;
       handleLocation(key, rendition);
-      setTimeout(() => (lock = false), getThrottleTime());
+      unlock();
     },
-    { passive: false }
+    { passive: false, signal: controller?.signal }
   );
 };
 export const htmlMouseEvent = (

@@ -15,6 +15,7 @@ import DeleteIcon from "/src/components/deleteIcon/component.tsx";
 import NavList from "/src/containers/lists/navList/component.tsx";
 import ReaderTopToolbar from "/src/components/readerTopToolbar/component.tsx";
 import Viewer from "/src/containers/viewer/component.tsx";
+import {throttle} from "/src/utils/common.ts";
 import {bindHtmlEvent} from "/src/utils/reader/mouseEvent.ts";
 import {ConfigService} from "/src/assets/lib/kookit-extra-browser.min";
 import i18n from "/src/i18n.tsx";
@@ -25,6 +26,8 @@ export async function run(){
   const check=(value:unknown,message:string)=>{if(!value)throw Error(message);checks.push(message);};
   const wait=async(condition:()=>boolean|Promise<boolean>,message:string)=>{const until=Date.now()+15000;while(Date.now()<until){if(await condition())return;await new Promise(resolve=>setTimeout(resolve,25));}throw Error(message);};
   const tick=()=>new Promise(resolve=>setTimeout(resolve,40));
+  let calls=0;const throttled=throttle(()=>calls++,25);throttled();throttled();throttled.cancel();await new Promise(resolve=>setTimeout(resolve,50));
+  check(calls===1,"shared throttle cancellation removes an already scheduled trailing callback");
   const area=document.getElementById("page-area")!,host=document.getElementById("editor")!,root=createRoot(host);
   const render=(node:React.ReactNode)=>flushSync(()=>root.render(<React.StrictMode><MemoryRouter>{node}</MemoryRouter></React.StrictMode>));
   const opened=await openPersistentTxt("fixture","","utf-8","");
@@ -223,6 +226,11 @@ export async function run(){
   check(wheelJumps===0,"native wheel chapter crossings never call the explicit jump/replace path");
   viewer.txtWindow.jump=originalJump;
   await window.electronAPI.invoke("annotation-test-preview","native");
-  root.unmount();viewer.removeContent();
+  const closedManager=viewer.txtWindow;let staleKeys=0;const closedPosition=viewer.getPosition();
+  root.unmount();
+  check(closedManager.closed&&closedManager.stats.cacheBytes===0&&viewer.book===null,"real Viewer unmount disposes the TXT instance and cache without an extra caller cleanup");
+  viewer.getPosition=()=>{staleKeys++;return closedPosition;};viewer.next=async()=>{staleKeys++;};
+  window.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowRight",bubbles:true}));await new Promise(resolve=>setTimeout(resolve,350));
+  check(staleKeys===0,"real Viewer close removes the outer-window keyboard handler and its reader reference");
   return {passed:true,cases:checks.length,checks,normalCompiledEngine:true,userDatabaseOpened:false};
 }

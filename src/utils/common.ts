@@ -483,11 +483,11 @@ export const RESIZE_THROTTLE_MS = 300;
 export function throttle<T extends (...args: any[]) => void>(
   func: T,
   wait: number = RESIZE_THROTTLE_MS
-): (...args: Parameters<T>) => void {
+): ((...args: Parameters<T>) => void) & { cancel: () => void } {
   let lastCall = 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  return function (this: unknown, ...args: Parameters<T>) {
+  const throttled = function (this: unknown, ...args: Parameters<T>) {
     const now = Date.now();
     const invoke = () => {
       lastCall = Date.now();
@@ -510,6 +510,8 @@ export function throttle<T extends (...args: any[]) => void>(
       );
     }
   };
+  throttled.cancel = () => { if (timeoutId) clearTimeout(timeoutId); timeoutId = null; lastCall = 0; };
+  return throttled;
 }
 
 export const scrollContents = (

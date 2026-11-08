@@ -132,7 +132,7 @@ app
           const anchorTop=anchor.getBoundingClientRect().top-area.scrollTop;
           doc.body.style.fontSize='19px';await settle(r);
           check(Math.abs(anchor.getBoundingClientRect().top-area.scrollTop-anchorTop)<3,'font relayout compensates the original text anchor: '+(anchor.getBoundingClientRect().top-area.scrollTop-anchorTop));
-          failRead=true;let failed=false;try{await r.goToChapterDocIndex(33);}catch{failed=true;}failRead=false;
+          failRead=true;let failed=false;try{await r.txtWindow.jump(120,Math.floor((giant.end-giant.start)/2));}catch{failed=true;}failRead=false;
           check(failed&&doc.contains(block),'failed destination read retains the current readable DOM');
           saved=JSON.stringify(r.tempLocation);firstGeneration=r.tempLocation.txtWindow.generation;
           check(r.tempLocation.txtWindow.chapterId===giant.chapterId,'position stores immutable chapter ID and generation');

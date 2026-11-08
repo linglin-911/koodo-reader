@@ -210,3 +210,35 @@ it("an aborted open releases its ticket and never starts a Worker or reads a sou
   await expect(source.store!.prepare()).rejects.toThrow("closed");
   expect(invoke.mock.calls.map(call => call[1].action)).toEqual(["open", "close"]);
 });
+
+it("close rejects a late final chunk, never returns decoded text, and shares one close completion", async () => {
+  let completeRead!: (value: unknown) => void, completeClose!: (value: unknown) => void;
+  const invoke = vi.fn().mockResolvedValueOnce({ ticket: "reader", index: null, encoding: "utf-8", persistentSupported: true })
+    .mockImplementation((_channel: string, command: {action: string}) => new Promise(resolve => {
+      if(command.action === "close") completeClose=resolve; else completeRead=resolve;
+    }));
+  vi.stubGlobal("window", {electronAPI:{invoke}});
+  const source=await openPersistentTxt("book","","utf-8","");
+  const chapter={index:0,chapterId:"c",byteStart:0,byteEnd:1,start:0,end:1} as Parameters<NonNullable<typeof source.store>["readChapter"]>[0];
+  const read=source.store!.readChapter(chapter), rejected=expect(read).rejects.toThrow("closed");
+  const first=source.store!.close(),second=source.store!.close();expect(first).toBe(second);
+  completeRead({buffer:new Uint8Array([65])});await rejected;
+  completeClose({closed:true});await first;
+  expect(invoke.mock.calls.map(call=>call[1].action)).toEqual(["open","read-chapter","close"]);
+});
+it("close immediately stops progress polling and ignores a late preparation result", async () => {
+  vi.useFakeTimers();
+  try {
+    let complete!: (value: unknown) => void;
+    const onProgress=vi.fn();
+    const invoke=vi.fn().mockResolvedValueOnce({ticket:"reader",index:null,encoding:"utf-8",persistentSupported:true})
+      .mockImplementation((_channel:string,command:{action:string})=>command.action==="prepare" ? new Promise(resolve=>{complete=resolve;}) : Promise.resolve({state:"building"}));
+    vi.stubGlobal("window",{electronAPI:{invoke}});
+    const source=await openPersistentTxt("book","","utf-8","",{onProgress});
+    const pending=source.store!.prepare(),rejected=expect(pending).rejects.toThrow("closed");
+    await vi.advanceTimersByTimeAsync(101);const closing=source.store!.close(),notifications=onProgress.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(1000);complete({index:{chapters:[]}});await rejected;await closing;
+    expect(onProgress).toHaveBeenCalledTimes(notifications);expect(vi.getTimerCount()).toBe(0);
+    await expect(source.store!.load(false)).rejects.toThrow("closed");
+  } finally {vi.useRealTimers();}
+});

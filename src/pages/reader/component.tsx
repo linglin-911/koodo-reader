@@ -198,9 +198,15 @@ const Reader = () => {
             },
             onBeforeClose(): void {
               const ipcRenderer = window.electronAPI;
-              // Reply to whichever close signal is active
-              ipcRenderer.send("reader-close-ready");
-              ipcRenderer.send("tab-close-ready");
+              // ReadingTimeUtil has persisted progress before this callback.
+              // Release TXT sessions/DOM before acknowledging the two-stage close.
+              const rendition = propsRef.current.htmlBook?.rendition;
+              const ready = () => {
+                ipcRenderer.send("reader-close-ready");
+                ipcRenderer.send("tab-close-ready");
+              };
+              if (rendition?.format === "TXT") void Promise.resolve(rendition.removeContent()).then(ready, ready);
+              else ready();
             },
           }
         : {

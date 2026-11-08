@@ -57,9 +57,17 @@ const createSource = (
 ) => {
   let cached = initial;
   let closed = false;
+  let closing: Promise<unknown> | undefined;
+  let stopPolling = () => {};
+  const inFlight = new Set<Promise<unknown>>();
   const command = (data: Record<string, unknown>) => {
     if (closed) throw new Error("TXT source is closed");
-    return invoke({ ticket, ...data });
+    const pending = invoke({ ticket, ...data }).then(result => {
+      if (closed) throw new Error("TXT source is closed");
+      return result;
+    }).finally(() => { inFlight.delete(pending); });
+    inFlight.add(pending);
+    return pending;
   };
   let preparing: Promise<TxtIndexSnapshot> | undefined;
   const abort = () => { void source.close().catch(() => {}); };
@@ -74,6 +82,7 @@ const createSource = (
       if (preparing) return preparing;
       preparing = (async () => {
         let active = true, timer: ReturnType<typeof setTimeout> | undefined, preview: string | undefined;
+        stopPolling = () => { active = false; clearTimeout(timer); preview = undefined; };
         const poll = async () => {
           try {
             const progress = (await command({ action: "build-status" })) as TxtBuildProgress;
@@ -148,12 +157,17 @@ const createSource = (
       await command({ action: "invalidate" });
       cached = null;
     },
-    close: async () => {
-      if (closed) return;
+    close: () => {
+      if (closing) return closing;
       closed = true;
+      stopPolling();
       options.signal?.removeEventListener("abort", abort);
       cached = null;
-      await invoke({ action: "close", ticket });
+      closing = (async () => {
+        try { return await invoke({ action: "close", ticket }); }
+        finally { await Promise.allSettled([...inFlight]); }
+      })();
+      return closing;
     },
   };
   options.signal?.addEventListener("abort", abort, { once: true });
