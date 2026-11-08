@@ -381,6 +381,7 @@ export const scrollChapter = async (
   rendition: any,
   deltaY: number
 ) => {
+  if (rendition.isTxtWindowActive?.()) return;
   if (deltaY < 0) {
     if (element.scrollTop === 0) {
       await rendition.prev();
@@ -454,6 +455,7 @@ export const bindHtmlEvent = (
       ) {
         event.preventDefault();
       }
+      if (rendition.isTxtWindowActive?.() && readerMode === "scroll" && !isReadingAidMode(format, key)) return;
       if (lock) return;
       lock = true;
       if (readerMode === "scroll") {

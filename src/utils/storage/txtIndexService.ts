@@ -3,6 +3,7 @@ import { getStorageLocation } from "../common";
 // The engine owns the detailed v1 wire types; the host transports structured
 // values unchanged and never routes these rows through legacy Note converters.
 interface TxtIndexSnapshot {
+  checkpoints?: [number, number][];
   contract: {
     parserVersion: number;
     indexVersion: number;
@@ -106,6 +107,11 @@ const createSource = (
       const result = (await command({ action: "read-source" })) as {
         buffer: Uint8Array;
       };
+      return result.buffer;
+    },
+    readChapterRange: async (chapter: Chapter, offset: number, length: number) => {
+      const result = (await command({ action: "read-chapter", chapterIndex: chapter.index, chapterId: chapter.chapterId, offset, length })) as { buffer: Uint8Array };
+      if (result.buffer.byteLength !== length) throw new Error("Incomplete TXT block range");
       return result.buffer;
     },
     readChapter: async (chapter: Chapter) => {

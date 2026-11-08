@@ -101,6 +101,12 @@ app
         chapters,
       };
     };
+    const { validateIndex } = require("../src/utils/main/txt-index-store");
+    const validBlocks = { ...fixture(), checkpoints: [[0, 0], [Buffer.byteLength(source), source.replace(/\r\n?/g, "\n").length]] };
+    const metadata = { encoding: "utf-8", bomBytes: 0, identity: { size: Buffer.byteLength(source) } };
+    validateIndex(validBlocks, metadata);
+    for (const checkpoints of [[], [[1,0]], [[0,0],[1,1]], [[0,0],[0,1]], [[0,0],[8193,1]], [[0,0],["bad",2]]])
+      assert.throws(() => validateIndex({ ...validBlocks, checkpoints }, metadata), /block checkpoint/);
     let passed = 0;
     const check = async (name, body) => {
       await body();

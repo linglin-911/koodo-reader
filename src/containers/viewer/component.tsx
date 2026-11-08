@@ -559,6 +559,20 @@ const Viewer = (props: ViewerProps) => {
         readerMode: propsRef.current.readerMode,
         charset: persistentTxt?.encoding || propsRef.current.currentBook.charset,
         txtIndexStore: persistentTxt?.store,
+        // Phase-7 prototype is opt-in per book until phase-8 interaction acceptance.
+        txtContinuousScroll: ConfigService.getAllListConfig("txtContinuousScrollBooks").includes(propsRef.current.currentBook.key),
+        onTxtWindowPosition: throttle(() => {
+          if (!rendition.isTxtWindowActive?.() || propsRef.current.htmlBook?.rendition !== rendition) return;
+          // Read the latest position in the trailing call; the shared throttle retains first-call arguments.
+          const latest = rendition.getPosition();
+          ConfigService.setObjectConfig(propsRef.current.currentBook.key, latest, "recordLocation");
+          const chapterDocIndex = Number(latest.chapterDocIndex || 0);
+          if (chapterDocIndex !== stateRef.current.chapterDocIndex) {
+            propsRef.current.handleCurrentChapter(latest.chapterTitle || "");
+            propsRef.current.handleCurrentChapterIndex(chapterDocIndex);
+            updateState({ chapter: latest.chapterTitle || "", chapterDocIndex });
+          }
+        }),
         animation: ConfigService.getReaderConfig("animation") || "none",
         convertChinese: ConfigService.getReaderConfig("convertChinese"),
         bookLayout: ConfigService.getReaderConfig("bookLayout") || "",
@@ -806,6 +820,7 @@ const Viewer = (props: ViewerProps) => {
       cfi: string;
       page: string;
       xpath: string;
+      txtWindow?: { version: number; chapterId: string; generation: string | null; offset: number };
     } = ConfigService.getObjectConfig(
       propsRef.current.currentBook.key,
       "recordLocation",
@@ -830,6 +845,7 @@ const Viewer = (props: ViewerProps) => {
               : bookLocation.count || 0,
             percentage: bookLocation.percentage,
             cfi: bookLocation.cfi,
+            txtWindow: bookLocation.txtWindow,
             isFirst: true,
           })
         );

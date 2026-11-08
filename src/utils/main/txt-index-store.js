@@ -151,6 +151,21 @@ const validateIndex = (index, metadata) => {
     index.chapters.length > 1000000
   )
     throw new Error("Invalid TXT index header");
+  // Optional additive sparse block metadata. Old valid v1 indexes remain usable.
+  if (index.checkpoints !== undefined) {
+    const points = index.checkpoints;
+    if (!Array.isArray(points) || !points.length || points.length > Math.ceil(index.byteLength / 4096) + 2)
+      throw Error("Invalid TXT block checkpoints");
+    let byte = index.bomBytes, text = 0;
+    points.forEach((point, i) => {
+      if (!Array.isArray(point) || point.length !== 2 || !point.every(integer) ||
+        (i === 0 ? point[0] !== byte || point[1] !== 0 : point[0] <= byte || point[0] - byte > 8192 || point[1] < text || point[1] - text > 8192) ||
+        point[0] > index.byteLength || point[1] > index.textLength)
+        throw Error("Invalid TXT block checkpoint coordinates");
+      [byte, text] = point;
+    });
+    if (byte !== index.byteLength || text !== index.textLength) throw Error("Incomplete TXT block checkpoints");
+  }
   let previousByte = index.bomBytes,
     previousText = 0;
   const ids = new Set();
@@ -418,6 +433,7 @@ const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {}
       byteLength: c.index.byteLength,
       lineCount: c.index.lineCount,
       mode: c.index.mode,
+      ...(c.index.checkpoints ? { checkpoints: c.index.checkpoints.map(([byte, text]) => [byte, text]) } : {}),
     };
     const previousGeneration =
       t.base ||
