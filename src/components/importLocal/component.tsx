@@ -1,3 +1,4 @@
+import { queueImportedTxtIndex } from "../../utils/storage/txtIndexService";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import React, { useEffect, useRef, useState } from "react";
@@ -19,6 +20,7 @@ import CoverUtil from "../../utils/file/coverUtil";
 import { Readability } from "@mozilla/readability";
 import {
   calculateFileMD5,
+  getParserRegex,
   clearComicTemp,
   getTextRules,
   isFixedLayoutBook,
@@ -130,6 +132,8 @@ const ImportLocal = (props: ImportLocalProps) => {
     stateRef.current = next;
     setStateObj(next);
   };
+  const txtImportsRef = useRef(new AbortController());
+  useEffect(() => { txtImportsRef.current = new AbortController(); return () => txtImportsRef.current.abort(); }, []);
   const resizeHandlerRef = useRef<(() => void) | null>(null);
   const importUrlHandlerRef = useRef<((config: any) => void) | null>(null);
   const getMd5WithBrowserRef = useRef<((file: File) => Promise<void>) | null>(
@@ -327,6 +331,12 @@ const ImportLocal = (props: ImportLocalProps) => {
       DatabaseService.saveRecord(book, "books")
         .then(() => {
           handleFetchBooks();
+          if (isElectron && book.format === "TXT") {
+            const signal = txtImportsRef.current.signal;
+            void queueImportedTxtIndex(book, getParserRegex("TXT", book.key), signal).catch(() => {
+              if (!signal.aborted) toast.error(t("Chapter preparation failed. Open the book to retry."));
+            });
+          }
           if (mode === "shelf") {
             ConfigService.setMapConfig(
               shelfTitle,

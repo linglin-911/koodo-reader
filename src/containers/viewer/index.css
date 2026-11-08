@@ -79,3 +79,7 @@
   margin-left: -150px;
   margin-top: -50px;
 }
+
+.txt-index-progress { position: absolute; z-index: 5; inset: 30px 8%; overflow: auto; padding: 20px; background: inherit; color: inherit; }
+.txt-index-progress progress { width: 140px; margin: 0 15px; }
+.txt-index-progress pre { font: inherit; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }

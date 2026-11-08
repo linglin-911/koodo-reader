@@ -132,6 +132,7 @@
       "src/utils/plugins/main/**/*.js",
       "main.js",
       "src/utils/main/**/*.js",
+      "src/utils/main/**/*.cjs",
       "preload.js",
       "chat-preload.js"
     ],

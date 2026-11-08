@@ -1,5 +1,4 @@
 // Local, rebuildable cache in notes.db. No arbitrary SQL/legacy row converters.
-const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const CONTRACT = Object.freeze({
@@ -8,7 +7,6 @@ const CONTRACT = Object.freeze({
   normalizationVersion: 1,
   featureVersion: 1,
 });
-const SAMPLE_ALGORITHM = "sha256-3x4096-v1";
 const migrated = new WeakMap();
 const ensureSchema = (db) => {
   if (migrated.has(db)) return migrated.get(db);
@@ -75,6 +73,10 @@ const validateRequest = (c) => {
     ![
       "open",
       "commit",
+      "prepare",
+      "build-status",
+      "read-preview",
+      "cancel-build",
       "read-source",
       "read-chapter",
       "read-directory",
@@ -99,162 +101,8 @@ const validateRequest = (c) => {
   if (c.action !== "open" && (!validString(c.ticket, 64) || !c.ticket))
     throw new Error("Invalid TXT index ticket");
 };
-const resolveSource = (c) => {
-  const library = path.join(c.storagePath, "book", c.bookId + ".txt");
-  const selected = fs.existsSync(library) ? library : c.bookPath;
-  if (!selected) throw new Error("TXT source is unavailable");
-  return fs.realpathSync.native(selected);
-};
-const statIdentity = (file, stat) => {
-  if (!stat.isFile() || stat.size > BigInt(Number.MAX_SAFE_INTEGER))
-    throw new Error("Invalid TXT source file");
-  return {
-    realpath: file,
-    dev: String(stat.dev),
-    ino: String(stat.ino),
-    size: Number(stat.size),
-    mtimeNs: String(stat.mtimeNs),
-    ctimeNs: String(stat.ctimeNs),
-  };
-};
-const sample = (size, read) => {
-  const hash = crypto.createHash("sha256");
-  const offsets = [
-    ...new Set([
-      0,
-      Math.max(0, Math.floor(size / 2) - 2048),
-      Math.max(0, size - 4096),
-    ]),
-  ];
-  for (const start of offsets) {
-    const length = Math.min(4096, size - start);
-    hash.update(`${start}:${length}:`);
-    hash.update(read(start, length));
-  }
-  return hash.digest("hex");
-};
-const encodingOf = (bytes, charset) => {
-  let encoding = new TextDecoder(charset || "utf-8").encoding;
-  let bomBytes = 0;
-  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
-    encoding = "utf-8";
-    bomBytes = 3;
-  } else if (bytes[0] === 0xff && bytes[1] === 0xfe) {
-    encoding = "utf-16le";
-    bomBytes = 2;
-  } else if (bytes[0] === 0xfe && bytes[1] === 0xff) {
-    encoding = "utf-16be";
-    bomBytes = 2;
-  }
-  return { encoding, bomBytes };
-};
-// Sampling is a lightweight change detector, never a complete content proof.
-const inspect = (c) => {
-  const file = resolveSource(c);
-  const fd = fs.openSync(file, "r");
-  try {
-    const identity = statIdentity(file, fs.fstatSync(fd, { bigint: true }));
-    const read = (start, length) => {
-      const buffer = Buffer.alloc(length);
-      let total = 0;
-      while (total < length) {
-        const count = fs.readSync(
-          fd,
-          buffer,
-          total,
-          length - total,
-          start + total
-        );
-        if (!count) throw new Error("TXT file changed during read");
-        total += count;
-      }
-      return buffer;
-    };
-    const sampleFingerprint = sample(identity.size, read);
-    const encoding = encodingOf(read(0, Math.min(4, identity.size)), c.charset);
-    // Inspection remains bounded. Cold source data is read only through the
-    // explicit read-source operation, after the SQLite cache has been checked.
-    const after = statIdentity(file, fs.fstatSync(fd, { bigint: true }));
-    const currentFile = resolveSource(c);
-    // Electron's patched statSync can report dev=0 on Windows; use fstat for
-    // both descriptors so volume/inode comparisons use the same native API.
-    const currentFd = fs.openSync(currentFile, "r");
-    let current;
-    try {
-      current = statIdentity(
-        currentFile,
-        fs.fstatSync(currentFd, { bigint: true })
-      );
-    } finally {
-      fs.closeSync(currentFd);
-    }
-    if (
-      JSON.stringify(identity) !== JSON.stringify(after) ||
-      JSON.stringify(identity) !== JSON.stringify(current)
-    )
-      throw new Error(
-        "TXT changed during inspection: " +
-          Object.keys(identity)
-            .filter(
-              (key) =>
-                identity[key] !== after[key] || identity[key] !== current[key]
-            )
-            .join(",")
-      );
-    const metadata = {
-      identity,
-      ...encoding,
-      sampleFingerprint,
-      sampleAlgorithm: SAMPLE_ALGORITHM,
-      contract: CONTRACT,
-      configDigest: crypto
-        .createHash("sha256")
-        .update(
-          JSON.stringify({
-            parserRegex: c.parserRegex || "",
-            charset: c.charset || "",
-          })
-        )
-        .digest("hex"),
-    };
-    return { metadata };
-  } finally {
-    fs.closeSync(fd);
-  }
-};
+const { inspect, inspectAsync, readVerifiedRangeAsync } = require("./txt-source");
 const MAX_CHAPTER_READ_BYTES = 256 * 1024;
-const readVerifiedRange = (request, metadata, start, length) => {
-  const fd = fs.openSync(metadata.identity.realpath, "r");
-  try {
-    const sameIdentity = (stat) =>
-      JSON.stringify(statIdentity(metadata.identity.realpath, stat)) ===
-      JSON.stringify(metadata.identity);
-    if (!sameIdentity(fs.fstatSync(fd, { bigint: true })))
-      throw new Error("TXT source changed; reopen before reading");
-    const buffer = Buffer.alloc(length);
-    let total = 0;
-    while (total < length) {
-      const count = fs.readSync(
-        fd,
-        buffer,
-        total,
-        length - total,
-        start + total
-      );
-      if (!count) throw new Error("TXT source changed during range read");
-      total += count;
-    }
-    if (
-      !sameIdentity(fs.fstatSync(fd, { bigint: true })) ||
-      JSON.stringify(inspect(request).metadata) !== JSON.stringify(metadata)
-    ) {
-      throw new Error("TXT source changed during range read");
-    }
-    return buffer;
-  } finally {
-    fs.closeSync(fd);
-  }
-};
 const loadActive = (db, bookId) => {
   const row = db
     .prepare(
@@ -344,100 +192,122 @@ const validateIndex = (index, metadata) => {
     previousText = c.end;
   });
 };
-const createTxtIndexService = ({ getConnection, now = Date.now }) => {
-  const tickets = new Map();
+const STAGED = Symbol("private worker generation");
+const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {} }) => {
+  const tickets = new Map(), openingOwners = new Map();
+  const { createTxtBuildTasks } = require("./txt-index-tasks");
+  const tasks = createTxtBuildTasks({ getConnection, ensureSchema, validateIndex,
+    publish: (ticket, t, index, generation) => run({ action: "commit", dbName: "notes", storagePath: t.request.storagePath, ticket, index, [STAGED]: generation }, t.owner),
+    ...taskOptions });
   const run = async (c, owner) => {
     validateRequest(c);
     if (c.action === "open") {
-      // Read and validate the actual selected file BEFORE exposing any cached offsets.
-      const started = performance.now();
-      const snapshot = inspect(c);
-      const sourceReadAndValidationMs = performance.now() - started;
-      const persistentSupported = [
-        "utf-8",
-        "gbk",
-        "gb18030",
-        "utf-16le",
-        "utf-16be",
-        "windows-1252",
-      ].includes(snapshot.metadata.encoding);
-      if (!persistentSupported)
-        return {
-          ticket: null,
-          index: null,
-          buffer: readVerifiedRange(
-            c,
-            snapshot.metadata,
-            0,
-            snapshot.metadata.identity.size
-          ),
-          encoding: snapshot.metadata.encoding,
-          cacheHit: false,
-          persistentSupported,
-          transitionWholeFileRead: true,
-        };
-      const schemaStarted = performance.now();
-      const db = await getConnection(c.storagePath);
-      await ensureSchema(db);
-      const connectionAndSchemaMs = performance.now() - schemaStarted;
-      const sqlStarted = performance.now();
-      const active = loadActive(db, c.bookId);
-      let index =
-        active &&
-        JSON.stringify(active.metadata) === JSON.stringify(snapshot.metadata)
-          ? active.index
-          : null;
-      if (index) {
-        try {
-          validateIndex(index, snapshot.metadata);
-        } catch {
-          index = null;
+      const opening = openingOwners.get(owner) || { version: 0, count: 0 };
+      const version = opening.version; opening.count++; openingOwners.set(owner, opening);
+      try {
+        // Read and validate the actual selected file BEFORE exposing any cached offsets.
+        const started = performance.now();
+        const snapshot = await inspectAsync(c);
+        const sourceReadAndValidationMs = performance.now() - started;
+        const persistentSupported = [
+          "utf-8",
+          "gbk",
+          "gb18030",
+          "utf-16le",
+          "utf-16be",
+          "windows-1252",
+        ].includes(snapshot.metadata.encoding);
+        if (!persistentSupported)
+          return {
+            ticket: null,
+            index: null,
+            buffer: await readVerifiedRangeAsync(
+              c,
+              snapshot.metadata,
+              0,
+              snapshot.metadata.identity.size
+            ),
+            encoding: snapshot.metadata.encoding,
+            cacheHit: false,
+            persistentSupported,
+            transitionWholeFileRead: true,
+          };
+        const schemaStarted = performance.now();
+        const db = await getConnection(c.storagePath);
+        await ensureSchema(db);
+        const connectionAndSchemaMs = performance.now() - schemaStarted;
+        const sqlStarted = performance.now();
+        const active = loadActive(db, c.bookId);
+        let index =
+          active &&
+          JSON.stringify(active.metadata) === JSON.stringify(snapshot.metadata)
+            ? active.index
+            : null;
+        if (index) {
+          try {
+            validateIndex(index, snapshot.metadata);
+          } catch {
+            index = null;
+          }
         }
+        const sqlLoadAndValidationMs = performance.now() - sqlStarted;
+        if (opening.version !== version) throw Error("TXT renderer closed while opening");
+        const ticket = crypto.randomUUID();
+        // Reading and pre-caching the same book can coexist in one renderer.
+        // Do not expire a live reader merely because it stayed on a page for a while.
+        if (tickets.size >= 128) throw new Error("Too many open TXT sources");
+        tickets.set(ticket, {
+          owner,
+          databasePath: db.name,
+          request: {
+            bookId: c.bookId,
+            bookPath: c.bookPath || "",
+            storagePath: c.storagePath,
+            charset: c.charset || "",
+            parserRegex: c.parserRegex || "",
+          },
+          metadata: snapshot.metadata,
+          base: active?.generation || null,
+          readGeneration: index ? active.generation : null,
+          createdAt: now(),
+        });
+        return {
+          ticket,
+          index,
+          byteLength: snapshot.metadata.identity.size,
+          bomBytes: snapshot.metadata.bomBytes,
+          encoding: snapshot.metadata.encoding,
+          cacheHit: !!index,
+          persistentSupported,
+          transitionWholeFileRead: false,
+          diagnostics: {
+            sourceReadAndValidationMs,
+            connectionAndSchemaMs,
+            sqlLoadAndValidationMs,
+            wholeFileReadBytes: 0,
+          },
+        };
+      } finally {
+        if (--opening.count === 0) openingOwners.delete(owner);
       }
-      const sqlLoadAndValidationMs = performance.now() - sqlStarted;
-      const ticket = crypto.randomUUID();
-      // Reading and pre-caching the same book can coexist in one renderer.
-      // Do not expire a live reader merely because it stayed on a page for a while.
-      if (tickets.size >= 128) throw new Error("Too many open TXT sources");
-      tickets.set(ticket, {
-        owner,
-        databasePath: db.name,
-        request: {
-          bookId: c.bookId,
-          bookPath: c.bookPath || "",
-          storagePath: c.storagePath,
-          charset: c.charset || "",
-          parserRegex: c.parserRegex || "",
-        },
-        metadata: snapshot.metadata,
-        base: active?.generation || null,
-        readGeneration: index ? active.generation : null,
-        createdAt: now(),
-      });
-      return {
-        ticket,
-        index,
-        byteLength: snapshot.metadata.identity.size,
-        bomBytes: snapshot.metadata.bomBytes,
-        encoding: snapshot.metadata.encoding,
-        cacheHit: !!index,
-        persistentSupported,
-        transitionWholeFileRead: false,
-        diagnostics: {
-          sourceReadAndValidationMs,
-          connectionAndSchemaMs,
-          sqlLoadAndValidationMs,
-          wholeFileReadBytes: 0,
-        },
-      };
     }
     const t = tickets.get(c.ticket);
     if (c.action === "close" && !t) return { closed: true };
     if (!t || t.owner !== owner || t.request.storagePath !== c.storagePath)
       throw new Error("Expired or foreign TXT index ticket");
     if (c.action === "close") {
+      tasks.release(c.ticket);
       tickets.delete(c.ticket);
       return { closed: true };
+    }
+    if (c.action === "prepare") return tasks.prepare(c.ticket, t);
+    if (c.action === "build-status") return tasks.status(c.ticket);
+    if (c.action === "cancel-build") { tasks.release(c.ticket); return { cancelled: true }; }
+    if (c.action === "read-preview") {
+      const chapter = tasks.preview(c.ticket);
+      if (!chapter) throw Error("TXT preview unavailable");
+      const length = Math.min(MAX_CHAPTER_READ_BYTES, chapter.byteEnd - chapter.byteStart);
+      return { buffer: await readVerifiedRangeAsync(t.request, t.metadata, chapter.byteStart, length), encoding: t.metadata.encoding };
     }
     if (c.action === "read-directory") {
       // Use the immutable generation pinned by this reader, not the active
@@ -455,11 +325,11 @@ const createTxtIndexService = ({ getConnection, now = Date.now }) => {
     if (c.action === "read-source") {
       const started = performance.now();
       if (
-        JSON.stringify(inspect(t.request).metadata) !==
+        JSON.stringify((await inspectAsync(t.request)).metadata) !==
         JSON.stringify(t.metadata)
       )
         throw new Error("TXT source changed; reopen before rebuilding");
-      const buffer = readVerifiedRange(
+      const buffer = await readVerifiedRangeAsync(
         t.request,
         t.metadata,
         0,
@@ -497,12 +367,12 @@ const createTxtIndexService = ({ getConnection, now = Date.now }) => {
       )
         throw new Error("TXT chapter range is unavailable");
       if (
-        JSON.stringify(inspect(t.request).metadata) !==
+        JSON.stringify((await inspectAsync(t.request)).metadata) !==
         JSON.stringify(t.metadata)
       )
         throw new Error("TXT source changed; reopen before reading");
       const started = performance.now();
-      const buffer = readVerifiedRange(
+      const buffer = await readVerifiedRangeAsync(
         t.request,
         t.metadata,
         chapter.byte_start + c.offset,
@@ -527,14 +397,15 @@ const createTxtIndexService = ({ getConnection, now = Date.now }) => {
       return { invalidated: true };
     }
     validateIndex(c.index, t.metadata);
-    const current = inspect(t.request).metadata;
+    const current = (await inspectAsync(t.request)).metadata;
     if (JSON.stringify(current) !== JSON.stringify(t.metadata))
       throw new Error("TXT source changed; reopen before rebuilding");
     const db = await getConnection(c.storagePath);
     await ensureSchema(db);
     // All scanning, decoding, input validation and filesystem matching happened outside SQL transactions.
+    if (tickets.get(c.ticket) !== t) throw Error("TXT source closed before publication");
     const metadataJson = JSON.stringify(t.metadata);
-    const generation = crypto.randomUUID(),
+    const generation = c[STAGED] || crypto.randomUUID(),
       revision = crypto.randomUUID();
     const { chapters } = c.index;
     // Whitelist every persisted field: an extra renderer payload must never
@@ -567,7 +438,7 @@ const createTxtIndexService = ({ getConnection, now = Date.now }) => {
         retained.add(state.readGeneration);
     }
     // Formal bindings keep their old snapshots available until explicit unlink
-    // or phase-5 reconciliation. Index rebuilding never deletes annotation data.
+    // or phase-10 reconciliation. Index rebuilding never deletes annotation data.
     if (db.prepare("SELECT 1 FROM sqlite_master WHERE name='annotation_schema'").get()) {
       for (const table of ["note_bindings", "chapter_bindings", "range_bindings"]) {
         for (const row of db.prepare(`SELECT DISTINCT generation FROM ${table} WHERE book_id=? AND status!='unbound' AND generation IS NOT NULL`).all(t.request.bookId))
@@ -587,40 +458,47 @@ const createTxtIndexService = ({ getConnection, now = Date.now }) => {
         throw new Error(
           "TXT index changed concurrently; reopen before rebuilding"
         );
-      db.prepare(
-        `INSERT INTO txt_index_generations VALUES(?,?,'building',?,?,?,?)`
-      ).run(
-        t.request.bookId,
-        generation,
-        metadataJson,
-        JSON.stringify(header),
-        revision,
-        now()
-      );
-      const insert = db.prepare(
-        "INSERT INTO txt_index_chapters VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-      );
-      for (const ch of chapters)
-        insert.run(
+      if (!c[STAGED]) {
+        db.prepare(
+          `INSERT INTO txt_index_generations VALUES(?,?,'building',?,?,?,?)`
+        ).run(
           t.request.bookId,
           generation,
-          ch.chapterId,
-          ch.index,
-          ch.label,
-          ch.byteStart,
-          ch.byteEnd,
-          ch.bodyByteStart,
-          ch.start,
-          ch.end,
-          ch.bodyStart,
-          ch.firstChars,
-          ch.lastChars,
-          ch.lineCount,
-          ch.size,
-          ch.recognition,
-          +ch.hasTitle,
-          +ch.fixedChunk
+          metadataJson,
+          JSON.stringify(header),
+          revision,
+          now()
         );
+        const insert = db.prepare(
+          "INSERT INTO txt_index_chapters VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        );
+        for (const ch of chapters)
+          insert.run(
+            t.request.bookId,
+            generation,
+            ch.chapterId,
+            ch.index,
+            ch.label,
+            ch.byteStart,
+            ch.byteEnd,
+            ch.bodyByteStart,
+            ch.start,
+            ch.end,
+            ch.bodyStart,
+            ch.firstChars,
+            ch.lastChars,
+            ch.lineCount,
+            ch.size,
+            ch.recognition,
+            +ch.hasTitle,
+            +ch.fixedChunk
+          );
+      } else {
+        const staged = db.prepare("SELECT state FROM txt_index_generations WHERE book_id=? AND generation=?").get(t.request.bookId, generation);
+        if (staged?.state !== "building") throw Error("TXT staged generation is unavailable");
+        db.prepare("UPDATE txt_index_generations SET index_json=?,document_revision=? WHERE book_id=? AND generation=? AND state='building'")
+          .run(JSON.stringify(header), revision, t.request.bookId, generation);
+      }
       db.prepare(
         "UPDATE txt_index_generations SET state='ready' WHERE book_id=? AND generation=?"
       ).run(t.request.bookId, generation);
@@ -655,7 +533,7 @@ const createTxtIndexService = ({ getConnection, now = Date.now }) => {
     if (!validString(ticket,64) || !Number.isSafeInteger(chapterIndex) || chapterIndex<0 || !validString(chapterId,64)) throw new Error("Invalid chapter snapshot request");
     const t=tickets.get(ticket);
     if(!t||t.owner!==owner||!t.readGeneration)throw new Error("TXT source unavailable; reopen before annotating");
-    if(JSON.stringify(inspect(t.request).metadata)!==JSON.stringify(t.metadata))throw new Error("TXT source changed; reopen before annotating");
+    if(JSON.stringify((await inspectAsync(t.request)).metadata)!==JSON.stringify(t.metadata))throw new Error("TXT source changed; reopen before annotating");
     const db=await getConnection(t.request.storagePath);
     const row=db.prepare(`SELECT c.*,g.document_revision FROM txt_index_chapters c
       JOIN txt_index_generations g ON g.book_id=c.book_id AND g.generation=c.generation
@@ -667,15 +545,17 @@ const createTxtIndexService = ({ getConnection, now = Date.now }) => {
       bodyStart:row.body_utf16_start,byteStart:row.byte_start,byteEnd:row.byte_end,bodyByteStart:row.body_byte_start,
       firstChars:row.first_chars,lastChars:row.last_chars};
     let text;
-    if(withText){const bytes=readVerifiedRange(t.request,t.metadata,row.byte_start,row.byte_end-row.byte_start);
+    if(withText){const bytes=await readVerifiedRangeAsync(t.request,t.metadata,row.byte_start,row.byte_end-row.byte_start);
       text=new TextDecoder(t.metadata.encoding,{fatal:true,ignoreBOM:true}).decode(bytes).replace(/\r\n?/g,"\n");
       if(text.length!==chapter.end-chapter.start)throw new Error("Chapter source no longer matches index");}
     return {bookId:t.request.bookId,generation:t.readGeneration,documentRevision:row.document_revision,chapter,text};
   };
   run.releaseOwner = (owner) => {
+    const opening = openingOwners.get(owner); if (opening) opening.version++;
     for (const [ticket, state] of tickets)
-      if (state.owner === owner) tickets.delete(ticket);
+      if (state.owner === owner) { tasks.release(ticket); tickets.delete(ticket); }
   };
+  run.shutdown = () => tasks.shutdown();
   return run;
 };
 module.exports = {

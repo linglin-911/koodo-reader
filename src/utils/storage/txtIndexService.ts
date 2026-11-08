@@ -38,6 +38,12 @@ export interface TxtDirectory {
   generation: string | null;
   chapters: { chapterId: string; index: number; label: string }[];
 }
+export interface TxtBuildProgress {
+  state: "queued" | "building" | "idle" | "failed" | "cancelled";
+  reason?: "line-limit" | "timeout";
+  bytes?: number; total?: number; chapters?: number; canPreview?: boolean; preview?: string;
+}
+interface SourceOptions { signal?: AbortSignal; onProgress?: (progress: TxtBuildProgress | null) => void; }
 const CHAPTER_CHUNK_BYTES = 256 * 1024;
 type Invoke = (command: Record<string, unknown>) => Promise<unknown>;
 type Chapter = TxtIndexSnapshot["chapters"][number];
@@ -45,7 +51,8 @@ const createSource = (
   invoke: Invoke,
   ticket: string,
   initial: TxtIndexSnapshot | null,
-  encoding: string
+  encoding: string,
+  options: SourceOptions
 ) => {
   let cached = initial;
   let closed = false;
@@ -53,11 +60,41 @@ const createSource = (
     if (closed) throw new Error("TXT source is closed");
     return invoke({ ticket, ...data });
   };
-  return {
+  let preparing: Promise<TxtIndexSnapshot> | undefined;
+  const abort = () => { void source.close().catch(() => {}); };
+  const source = {
     sourceTicket: ticket,
     load: async (force: boolean) => {
       if (closed) throw new Error("TXT source is closed");
       return force ? null : cached;
+    },
+    prepare: (): Promise<TxtIndexSnapshot> => {
+      if (preparing) return preparing;
+      preparing = (async () => {
+        let active = true, timer: ReturnType<typeof setTimeout> | undefined, preview: string | undefined;
+        const poll = async () => {
+          try {
+            const progress = (await command({ action: "build-status" })) as TxtBuildProgress;
+            if (progress.canPreview && preview === undefined) {
+              try {
+                const response = (await command({ action: "read-preview" })) as { buffer: Uint8Array; encoding: string };
+                preview = new TextDecoder(response.encoding, { fatal: true, ignoreBOM: true }).decode(response.buffer, { stream: true }).replace(/\r\n?/g, "\n");
+              } catch { /* Publication may finish between status and preview. */ }
+            }
+            if (active && !closed) options.onProgress?.({ ...progress, preview });
+          } catch { /* The prepare request owns errors; polling cannot hide them. */ }
+          if (active && !closed) timer = setTimeout(poll, 100);
+        };
+        try {
+          const job = command({ action: "prepare" });
+          if (options.onProgress) void poll();
+          const result = (await job) as { index: TxtIndexSnapshot };
+          if (closed) throw new Error("TXT source is closed");
+          cached = result.index;
+          return result.index;
+        } finally { active = false; clearTimeout(timer); if (!closed) options.onProgress?.(null); preparing = undefined; }
+      })();
+      return preparing;
     },
     save: async (index: TxtIndexSnapshot) => {
       await command({ action: "commit", index });
@@ -107,17 +144,23 @@ const createSource = (
     close: async () => {
       if (closed) return;
       closed = true;
+      options.signal?.removeEventListener("abort", abort);
       cached = null;
       await invoke({ action: "close", ticket });
     },
   };
+  options.signal?.addEventListener("abort", abort, { once: true });
+  if (options.signal?.aborted) abort();
+  return source;
 };
 export const openPersistentTxt = async (
   bookId: string,
   bookPath: string,
   charset: string,
-  parserRegex: string
+  parserRegex: string,
+  options: SourceOptions = {}
 ) => {
+  if (options.signal?.aborted) throw new Error("TXT indexing cancelled");
   const storagePath = getStorageLocation();
   const invoke: Invoke = (command) =>
     window.electronAPI.invoke("database-command", {
@@ -150,7 +193,7 @@ export const openPersistentTxt = async (
     })}`
   );
   // Only the legacy adapter receives a whole buffer. The supported path starts
-  // empty; cold scan data lives exclusively inside prepareTxtIndex's call frame.
+  // empty; supported cold scans stream through a main-process-owned Worker.
   const legacy = response.buffer;
   return {
     buffer: legacy
@@ -167,7 +210,8 @@ export const openPersistentTxt = async (
             invoke,
             response.ticket,
             response.index,
-            response.encoding
+            response.encoding,
+            options
           )
         : undefined,
   };
@@ -211,4 +255,18 @@ export const clearPersistentTxtCache = async (
   } finally {
     await source.store.close();
   }
+};
+
+// Imported work retains metadata only and runs serially.
+let importQueue: Promise<unknown> = Promise.resolve();
+export const queueImportedTxtIndex = (book: { key: string; path: string; charset: string }, parserRegex: string, signal: AbortSignal) => {
+  const metadata = { key: book.key, path: book.path, charset: book.charset };
+  const job = importQueue.then(async () => {
+    const opened = await openPersistentTxt(metadata.key, metadata.path, metadata.charset, parserRegex, { signal });
+    try {
+      if (opened.store && !opened.cacheHit) await opened.store.prepare();
+    } finally { await opened.store?.close(); }
+  });
+  importQueue = job.catch(() => {});
+  return job;
 };

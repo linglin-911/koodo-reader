@@ -2403,6 +2403,7 @@ app.on("ready", async () => {
   createMainWin();
 });
 app.on("before-quit", () => {
+  txtIndexService.shutdown();
   isQuitting = true;
   destroyDiscordRPC();
 });

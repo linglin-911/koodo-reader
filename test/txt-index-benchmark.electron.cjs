@@ -1,3 +1,5 @@
+// Legacy phase-3 in-process adapter benchmark. Stage 6 normal Worker measurements
+// live in txt-index-worker.electron.cjs; this adapter deliberately exercises read-source.
 // Synthetic benchmark only. Usage: electron.exe test/txt-index-benchmark.electron.cjs <kookit-source> <report.json>
 // Never opens user storage or submits synthetic body text to Git.
 const { app } = require("electron");

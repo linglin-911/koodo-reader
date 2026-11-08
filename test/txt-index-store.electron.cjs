@@ -1,6 +1,7 @@
 // Run with Electron, never against a real profile or user database.
 const { app, BrowserWindow, ipcMain } = require("electron");
 app.disableHardwareAcceleration();
+app.on("window-all-closed", () => {});
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
@@ -600,11 +601,12 @@ app
       await check(
         "warm open does bounded sampling only, without a whole-file response",
         async () => {
-          const original = fs.readSync,
-            reads = [];
-          fs.readSync = (...args) => {
-            reads.push(args[3]);
-            return original(...args);
+          const original = fs.promises.open, originalSync = fs.readSync, reads = [];
+          fs.readSync = () => { throw Error("Production inspection used synchronous source I/O"); };
+          fs.promises.open = async (...args) => {
+            const fd = await original(...args), read = fd.read.bind(fd);
+            fd.read = (...args) => { reads.push(args[2]); return read(...args); };
+            return fd;
           };
           try {
             const warm = await service(request, 1);
@@ -613,7 +615,8 @@ app
             assert.equal(warm.diagnostics.wholeFileReadBytes, 0);
             assert.ok(reads.length > 0 && reads.every((n) => n <= 4096));
           } finally {
-            fs.readSync = original;
+            fs.promises.open = original;
+            fs.readSync = originalSync;
           }
         }
       );

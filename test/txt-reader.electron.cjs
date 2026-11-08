@@ -117,7 +117,7 @@ app
     assert.equal(result[1].cacheHit, true);
     assert.deepEqual(
       result.map((row) => row.wholeSourceReads),
-      [1, 0]
+      [0, 0]
     );
     assert.ok(
       result.every(

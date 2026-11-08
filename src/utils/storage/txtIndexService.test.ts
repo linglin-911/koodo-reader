@@ -185,3 +185,28 @@ it("reads the directory with the live ticket and rejects access after close", as
   await source.store!.close();
   await expect(source.store!.readDirectory()).rejects.toThrow("closed");
 });
+
+it("prepares once through the Worker protocol and caches only metadata", async () => {
+  const index = { chapters: [{ chapterId: "chapter", index: 0, label: "Title" }] };
+  const invoke = vi.fn().mockResolvedValueOnce({ ticket: "reader", index: null, encoding: "utf-8", persistentSupported: true })
+    .mockResolvedValue({ index });
+  vi.stubGlobal("window", { electronAPI: { invoke } });
+  const source = await openPersistentTxt("book", "", "utf-8", "");
+  const a = source.store!.prepare(), b = source.store!.prepare();
+  expect(a).toBe(b); expect(await a).toBe(index);
+  expect(await source.store!.load(false)).toBe(index);
+  expect(invoke.mock.calls.map(call => call[1].action)).toEqual(["open", "prepare"]);
+  await source.store!.close();
+});
+it("an aborted open releases its ticket and never starts a Worker or reads a source", async () => {
+  let finish!: (value: unknown) => void;
+  const response = new Promise(resolve => { finish = resolve; });
+  const invoke = vi.fn().mockReturnValueOnce(response).mockResolvedValue({});
+  vi.stubGlobal("window", { electronAPI: { invoke } });
+  const controller = new AbortController();
+  const pending = openPersistentTxt("book", "", "utf-8", "", { signal: controller.signal });
+  controller.abort(); finish({ ticket: "reader", index: null, encoding: "utf-8", persistentSupported: true });
+  const source = await pending;
+  await expect(source.store!.prepare()).rejects.toThrow("closed");
+  expect(invoke.mock.calls.map(call => call[1].action)).toEqual(["open", "close"]);
+});

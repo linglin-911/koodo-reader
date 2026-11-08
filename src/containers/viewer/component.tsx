@@ -1,3 +1,5 @@
+import TxtIndexProgress from "./txtIndexProgress";
+import type { TxtBuildProgress } from "../../utils/storage/txtIndexService";
 import { restoreAnnotations, annotationTarget } from "../../utils/reader/annotationUtil";
 import { useLatest } from "../../utils/hooks/useLatest";
 import { useEffect, useRef, useState } from "react";
@@ -185,6 +187,8 @@ const Viewer = (props: ViewerProps) => {
   const stateRef = useLatest(state);
   const updateState = (patch: Partial<ViewerState>) =>
     setState((prev) => ({ ...prev, ...patch }));
+  const txtOpenRef = useRef<AbortController | null>(null);
+  const [txtProgress, setTxtProgress] = useState<TxtBuildProgress | null>(null);
   const resizeHandlerRef = useRef<(() => void) | null>(null);
   const pendingRerenderRef = useRef(false);
   const prevWidthPropsRef = useRef({
@@ -378,6 +382,7 @@ const Viewer = (props: ViewerProps) => {
       stateRef.current.rendition.autoScrollPDF?.("no");
       stateRef.current.rendition.removeContent();
     }
+    txtOpenRef.current?.abort();
     let result;
     let persistentTxt: Awaited<ReturnType<typeof openPersistentTxt>> | undefined;
     const cacheCheckStartedAt = performance.now();
@@ -403,13 +408,24 @@ const Viewer = (props: ViewerProps) => {
     }
     const fetchStartedAt = performance.now();
     if (isElectron && format === "TXT") {
-      persistentTxt = await openPersistentTxt(
-        key,
-        path,
-        propsRef.current.currentBook.charset,
-        getParserRegex(format, key)
-      );
-      result = persistentTxt.buffer;
+      const controller = new AbortController();
+      txtOpenRef.current = controller;
+      setTxtProgress({ state: "queued" });
+      try {
+        persistentTxt = await openPersistentTxt(key, path, propsRef.current.currentBook.charset,
+          getParserRegex(format, key), { signal: controller.signal,
+            onProgress: progress => { if (!controller.signal.aborted) setTxtProgress(progress); } });
+        if (persistentTxt.store) await Kookit.prepareTxtIndex(persistentTxt.store, persistentTxt.encoding, getParserRegex(format, key));
+        if (controller.signal.aborted) { await persistentTxt.store?.close(); return; }
+        setTxtProgress(null);
+        result = persistentTxt.buffer;
+      } catch (error) {
+        await persistentTxt?.store?.close();
+        const message = error instanceof Error ? error.message : "";
+        if (!controller.signal.aborted) setTxtProgress({ state: "failed",
+          reason: message.includes("custom parser line exceeds") ? "line-limit" : message.includes("timed out") ? "timeout" : undefined });
+        return;
+      }
     } else if (
       isElectron &&
       (propsRef.current.currentBook.format === "CBZ" ||
@@ -1014,6 +1030,7 @@ const Viewer = (props: ViewerProps) => {
     resizeHandlerRef.current = resizeHandler;
     window.addEventListener("resize", resizeHandler);
     return () => {
+      txtOpenRef.current?.abort();
       if (resizeHandlerRef.current) {
         window.removeEventListener("resize", resizeHandlerRef.current);
         resizeHandlerRef.current = null;
@@ -1061,6 +1078,9 @@ const Viewer = (props: ViewerProps) => {
     !isReadingRawPDF(currentBook) && (isParagraphMode || isSpeedReading);
   return (
     <>
+      {txtProgress && <TxtIndexProgress progress={txtProgress}
+        cancel={() => { txtOpenRef.current?.abort(); setTxtProgress({ state: "cancelled" }); }}
+        retry={() => void handleRenderBook()} />}
       {htmlBook && !isReadingAid ? (
         <PopupMenu
           {...({
