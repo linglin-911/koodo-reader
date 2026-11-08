@@ -55,7 +55,10 @@ export async function run() {
     assert(viewport().scrollTop === top, "Chapter click moved the directory");
   }
   const jumped = (await bodyCommands()).slice(jumpStart).map((c: { chapterIndex: number }) => c.chapterIndex);
-  assert(JSON.stringify(jumped) === JSON.stringify(targets), "Deep jumps read intermediate chapter bodies"); cases++;
+  // The initial chapter may already be in phase-9's bounded direct-text LRU.
+  // A hit needs no range read; uncached destinations must still load directly.
+  assert(jumped.length <= targets.length && jumped.every(index=>targets.includes(index)) &&
+    targets.slice(1).every(index=>jumped.includes(index)), "Deep jumps read intermediate chapter bodies: "+JSON.stringify(jumped)); cases++;
   const title = host.querySelector<HTMLElement>('[data-chapter-index="6799"] button')!;
   assert(title.clientHeight === 40 && title.title.length > 200, "Long Chinese title changed virtual row height"); cases++;
   await window.electronAPI.invoke("directory-test-preview");

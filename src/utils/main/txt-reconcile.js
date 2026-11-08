@@ -4,6 +4,14 @@ const crypto = require('node:crypto');
 const TABLES = {small:'note_bindings',chapter:'chapter_bindings',range:'range_bindings'};
 const migrations = new WeakMap();
 const hasAnnotations = db => !!db.prepare("SELECT 1 FROM sqlite_master WHERE name='annotation_schema'").get();
+const bindingEpoch = rows => crypto.createHash('sha256').update(JSON.stringify(rows.map(row=>[row.kind,row.id,row.version,row.status]))).digest('hex');
+// Publication CAS needs versions/cardinality, not quotes, identities or source
+// proofs. All controlled binding mutations advance version/status or add an ID.
+const captureBindingVersions = (db,book) => {
+  const rows=hasAnnotations(db)?Object.entries(TABLES).flatMap(([kind,table])=>
+    db.prepare(`SELECT id,note_key,generation,status,version FROM ${table} WHERE book_id=? AND format='TXT' AND status!='unbound' ORDER BY id`).all(book).map(row=>({...row,kind}))):[];
+  return {rows,epoch:bindingEpoch(rows)};
+};
 const captureBindings = (db,book) => {
   const rows = hasAnnotations(db) ? Object.entries(TABLES).flatMap(([kind,table]) =>
     db.prepare(`SELECT * FROM ${table} WHERE book_id=? AND format='TXT' AND status!='unbound' ORDER BY id`).all(book).map(row=>({...row,kind}))) : [];
@@ -30,7 +38,7 @@ const captureBindings = (db,book) => {
     };
     row.identity={...anchor,...(anchor.chapter?{chapter:identity(anchor.chapter)}:{}),...(anchor.start?{start:identity(anchor.start),end:identity(anchor.end)}:{})};
   }
-  const epoch = crypto.createHash('sha256').update(JSON.stringify(rows.map(row=>[row.kind,row.id,row.version,row.status]))).digest('hex');
+  const epoch = bindingEpoch(rows);
   return {rows,epoch};
 };
 const ensureRecoverySchema = db => {
@@ -162,26 +170,35 @@ async function planRecovery({snapshot,chapters,readBody,fullHash,configDigest,co
 }
 // Called inside the SAME short transaction that publishes the ready index.
 function applyRecovery(db,book,generation,revision,plan) {
-  const current=captureBindings(db,book),unchanged=plan&&current.epoch===plan.epoch;
+  const current=captureBindingVersions(db,book),unchanged=plan&&current.epoch===plan.epoch;
   const lookup=new Map((unchanged?plan.plans:[]).map(item=>[item.row.kind+':'+item.row.id,item]));
   const counts={active:0,pending:0,invalid:0,conflicts:unchanged?0:current.rows.length};
-  for(const row of current.rows){
-    const table=TABLES[row.kind],item=lookup.get(row.kind+':'+row.id);
+  const statements=Object.fromEntries(Object.entries(TABLES).map(([kind,table])=>[kind,{
+    active:db.prepare(`UPDATE ${table} SET generation=?,chapter_id=?,start_index=?,end_index=?,status='active',anchor_json=?,prefix=?,suffix=?,relative_start=?,relative_end=?,version=version+1 WHERE id=? AND version=? AND status!='unbound'`),
+    pending:db.prepare(`UPDATE ${table} SET status=?,version=version+1 WHERE id=? AND version=? AND status!='unbound'`),
+  }]));
+  const insertResult=db.prepare('INSERT INTO txt_recovery_results VALUES(?,?,?,?,?,?,?,?,?)'),anchors=new Map();
+  for(const currentRow of current.rows){
+    const item=lookup.get(currentRow.kind+':'+currentRow.id);
+    // Reuse a full snapshot only after the complete logical epoch matched in
+    // this same transaction. On a conflict only lightweight current rows apply.
+    const row=item?item.row:currentRow;
     let status=row.status,reason=item?.reason||'concurrent-change',version=row.version;
     if(item?.status==='active'){
-      const anchor=row.kind==='range'?{start:item.start,end:item.end,documentRevision:revision}:{chapter:item.start,documentRevision:revision};
+      const anchorKey=JSON.stringify([row.kind,item.start.chapterId,item.end.chapterId]);
+      if(!anchors.has(anchorKey))anchors.set(anchorKey,JSON.stringify(row.kind==='range'?{start:item.start,end:item.end,documentRevision:revision}:{chapter:item.start,documentRevision:revision}));
       const match=item.match;
-      const changed=db.prepare(`UPDATE ${table} SET generation=?,chapter_id=?,start_index=?,end_index=?,status='active',anchor_json=?,prefix=?,suffix=?,relative_start=?,relative_end=?,version=version+1 WHERE id=? AND version=? AND status!='unbound'`)
-        .run(generation,item.start.chapterId,item.start.index,item.end.index,JSON.stringify(anchor),match?.prefix??row.prefix,match?.suffix??row.suffix,match?.start??row.relative_start,match?.end??row.relative_end,row.id,row.version);
+      const changed=statements[row.kind].active
+        .run(generation,item.start.chapterId,item.start.index,item.end.index,anchors.get(anchorKey),match?.prefix??row.prefix,match?.suffix??row.suffix,match?.start??row.relative_start,match?.end??row.relative_end,row.id,row.version);
       if(changed.changes!==1)throw Error('TXT binding changed during recovery');status='active';version++;
     }else if(row.generation!==generation||item){
       status=item?.status||'pending';
-      const changed=db.prepare(`UPDATE ${table} SET status=?,version=version+1 WHERE id=? AND version=? AND status!='unbound'`).run(status,row.id,row.version);
+      const changed=statements[row.kind].pending.run(status,row.id,row.version);
       if(changed.changes!==1)throw Error('TXT binding changed during recovery');version++;
     }
     counts[status]++;
     const old=item?.anchor;const label=item?.start?.label||old?.chapter?.label||old?.start?.label||'';
-    db.prepare('INSERT INTO txt_recovery_results VALUES(?,?,?,?,?,?,?,?,?)').run(book,generation,row.kind,row.id,row.note_key,version,status,reason,label);
+    insertResult.run(book,generation,row.kind,row.id,row.note_key,version,status,reason,label);
   }
   // Results are rebuildable diagnostics; formal snapshots/quotes remain in bindings.
   db.prepare('DELETE FROM txt_recovery_results WHERE book_id=? AND generation!=?').run(book,generation);

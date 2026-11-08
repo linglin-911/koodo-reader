@@ -93,8 +93,8 @@ export interface RecoveryResults {
 }
 export const AnnotationService = {
   recoveryResults: (bookKey:string,offset=0) => annotationCommand<RecoveryResults>("recovery-results",{bookKey,offset,limit:50}),
-  readingWindow: (data: {bookKey:string;format:"TXT";sourceTicket?:string;blocks:AnnotationWindowBlock[];offset:number}, context:DatabaseReadContext={}) =>
-    annotationCommand<{records:ReadingAnnotation[];related:unknown[];hasMore:boolean}>("reading-window",{...data,limit:200},context),
+  readingWindow: (data: {bookKey:string;format:"TXT";sourceTicket?:string;blocks:AnnotationWindowBlock[];offset:number;afterId?:string}, context:DatabaseReadContext={}) =>
+    annotationCommand<{records:ReadingAnnotation[];related:unknown[];hasMore:boolean;nextCursor?:string}>("reading-window",{...data,limit:200},context),
   create: (note:{bookKey:string;kind:AnnotationKind;notes:string;tag:string[];title?:string},binding:BindingInput) =>
     annotationCommand<AnnotationEntity>("create",{note,binding}),
   list: (filter: Record<string, unknown> = {}) =>

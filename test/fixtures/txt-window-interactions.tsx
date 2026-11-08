@@ -56,7 +56,10 @@ export async function run(){
   const unchanged=r.getTxtHighlightRanges().find((row:{bindingId:string})=>row.bindingId===first.bindings[0].id).ranges[0];
   await restored();check(r.getTxtHighlightRanges().find((row:{bindingId:string})=>row.bindingId===first.bindings[0].id).ranges[0]===unchanged,"unchanged block highlight ranges are reused");
   await r.goToChapterDocIndex(0);
-  check(r.getTxtHighlightRanges().every((row:{ranges:Range[]})=>row.ranges.every(range=>range.startContainer.isConnected)),"same-block explicit jumps refresh native Range identities");
+  for(const note of [first,second,nested]){
+    const painted=r.getTxtHighlightRanges().find((row:{bindingId:string})=>row.bindingId===note.bindings[0].id);
+    check(painted?.ranges.every((range:Range)=>!range.collapsed)&&painted.ranges.map((range:Range)=>range.toString()).join("")===note.bindings[0].quote,"same-block explicit jumps retain exact nonempty highlight text");
+  }
   select(0,0,1);const clickRange=selection.getRangeAt(0).cloneRange();selection.removeAllRanges();
   const rect=clickRange.getBoundingClientRect();
   doc.body.dispatchEvent(new MouseEvent("click",{bubbles:true,clientX:rect.left+rect.width/2,clientY:rect.top+rect.height/2}));

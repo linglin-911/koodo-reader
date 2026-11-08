@@ -1,0 +1,62 @@
+{
+  "passed": true,
+  "scope": "Phase-9 isolated synthetic continuous window; no annotations; loaded before phase-11 engine changes",
+  "engineBaseline": {
+    "koodo": "b4179bc0",
+    "kookit": "65eea0f"
+  },
+  "userDatabaseOpened": false,
+  "soakMinutes": 60,
+  "actualElapsedMs": 3601567.3000001907,
+  "soakMoves": 4324,
+  "jumps": 1000,
+  "openCloseCycles": 10,
+  "gcExposed": true,
+  "baselineWindowMinutes": [
+    5,
+    15
+  ],
+  "tailWindowMinutes": [
+    45,
+    60
+  ],
+  "baselineSamples": 14,
+  "tailSamples": 22,
+  "metrics": {
+    "heap": {
+      "baselineMedian": 85991374.0,
+      "tailMedian": 86067412.0,
+      "growthPercent": 0.08842514831779447,
+      "minimum": 85978088,
+      "maximum": 86090348
+    },
+    "browserHeap": {
+      "baselineMedian": 241009452.0,
+      "tailMedian": 241085490.0,
+      "growthPercent": 0.031549799963870306,
+      "minimum": 241003958,
+      "maximum": 241112002
+    },
+    "privateKB": {
+      "baselineMedian": 604886.0,
+      "tailMedian": 607722.0,
+      "growthPercent": 0.4688486756182053,
+      "minimum": 600876,
+      "maximum": 624200
+    }
+  },
+  "liveWorkers": 0,
+  "liveMainFileHandles": 0,
+  "maximumConcurrentRangeReads": 1,
+  "maxCache": 270300,
+  "maxNodes": 86,
+  "allCloseResourceAssertionsPassed": true,
+  "runtime": {
+    "electron": "35.7.5",
+    "node": "22.16.0",
+    "platform": "win32",
+    "arch": "x64",
+    "osRelease": "10.0.26200",
+    "cpu": "AMD Ryzen 7 5800H with Radeon Graphics         "
+  }
+}

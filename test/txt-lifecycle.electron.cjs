@@ -59,6 +59,7 @@ app
     });
     server = await createServer({
       root: path.resolve(__dirname, ".."),
+      cacheDir: path.resolve(__dirname, "../node_modules/.vite-tests", path.basename(temporary)),
       server: { port: 0, host: "127.0.0.1", warmup: { clientFiles: [] } },
       plugins: [
         {
@@ -104,7 +105,7 @@ app
     window.cancelAnimationFrame=id=>{frames.delete(id);return caf(id);};
     const config=prepared=>({format:'TXT',charset:prepared.encoding,txtIndexStore:prepared.store,txtContinuousScroll:true,readerMode:'scroll',animation:'none',isMobile:'no',platform:'electron'});
     let jumps=0,maxCache=0,maxNodes=0;
-    async function sample(label){await tick();globalThis.gc?.();await tick();const memory=await process.getProcessMemoryInfo();samples.push({label,heap:require('node:v8').getHeapStatistics().used_heap_size,browserHeap:performance.memory.usedJSHeapSize,privateKB:memory.private});}
+    async function sample(label){await tick();globalThis.gc?.();await tick();const memory=await process.getProcessMemoryInfo();samples.push({label,elapsedMs:performance.now(),heap:require('node:v8').getHeapStatistics().used_heap_size,browserHeap:performance.memory.usedJSHeapSize,privateKB:memory.private});if(label.startsWith('soak-'))console.log('SOAK_SAMPLE '+JSON.stringify(samples[samples.length-1]));}
     async function open(){const prepared=await openPersistentTxt('reader-fixture','','utf-8','');const reader=Kookit.BookHelper.getRendition(prepared.buffer,config(prepared),Kookit);await reader.renderTo(area);return {prepared,reader};}
     try{
       for(let cycle=0;cycle<10;cycle++){

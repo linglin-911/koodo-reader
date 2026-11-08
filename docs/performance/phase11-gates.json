@@ -1,0 +1,135 @@
+{
+  "passed": true,
+  "complete": true,
+  "synthetic": true,
+  "userDatabaseOpened": false,
+  "results": [
+    {
+      "name": "annotation-store",
+      "exitCode": 0,
+      "durationMs": 2050.7495,
+      "passed": true,
+      "cases": 21,
+      "rendererErrors": 0
+    },
+    {
+      "name": "txt-index-store",
+      "exitCode": 0,
+      "durationMs": 1179.8833,
+      "passed": true,
+      "cases": 22,
+      "rendererErrors": 0
+    },
+    {
+      "name": "txt-index-worker",
+      "exitCode": 0,
+      "durationMs": 6200.120999999999,
+      "passed": true,
+      "cases": 17,
+      "rendererErrors": 0
+    },
+    {
+      "name": "txt-reader",
+      "exitCode": 0,
+      "durationMs": 20713.099200000004,
+      "passed": true,
+      "rendererErrors": 0
+    },
+    {
+      "name": "txt-worker-reader",
+      "exitCode": 0,
+      "durationMs": 27136.451800000003,
+      "passed": true,
+      "cases": 8,
+      "rendererErrors": 0
+    },
+    {
+      "name": "txt-directory",
+      "exitCode": 0,
+      "passed": true,
+      "rendererErrors": 0,
+      "cases": 12,
+      "rerunAfterAffectedChange": true
+    },
+    {
+      "name": "txt-window",
+      "exitCode": 0,
+      "durationMs": 61312.650299999994,
+      "passed": true,
+      "cases": 23,
+      "rendererErrors": 0
+    },
+    {
+      "name": "txt-window-store",
+      "exitCode": 0,
+      "passed": true,
+      "rendererErrors": 0,
+      "cases": 8,
+      "rerunAfterAffectedChange": true
+    },
+    {
+      "name": "txt-checkpoint-upgrade",
+      "exitCode": 0,
+      "durationMs": 2568.989900000015,
+      "passed": true,
+      "cases": 9,
+      "rendererErrors": 0
+    },
+    {
+      "name": "txt-window-interactions",
+      "exitCode": 0,
+      "passed": true,
+      "cases": 63,
+      "rendererErrors": 0,
+      "rerunAfterAffectedChange": true
+    },
+    {
+      "name": "annotation-reader",
+      "exitCode": 0,
+      "durationMs": 19721.948199999984,
+      "passed": true,
+      "cases": 18,
+      "rendererErrors": 0
+    },
+    {
+      "name": "txt-recovery",
+      "exitCode": 0,
+      "passed": true,
+      "cases": 21,
+      "rendererErrors": 0,
+      "rerunAfterAffectedChange": true
+    },
+    {
+      "name": "txt-recovery-ui",
+      "exitCode": 0,
+      "durationMs": 17007.788100000005,
+      "passed": true,
+      "cases": 11,
+      "rendererErrors": 0
+    }
+  ],
+  "scope": "This run: latest affected reruns plus unchanged serial gates; real-book/manual matrix is not complete",
+  "kookitNodeTests": 58,
+  "koodoVitestTests": 16,
+  "mainDiagnosticsAndReconcileTests": 18,
+  "typechecks": "both repositories passed",
+  "builds": "desktop engine/scanner and Koodo production passed",
+  "resourceSoak": {
+    "passed": true,
+    "minutes": 60,
+    "scope": "phase9 no-annotation synthetic baseline; see phase11-soak60-summary.json"
+  },
+  "mappingBenchmark": {
+    "passed": true,
+    "scope": "Node algorithm curve only"
+  },
+  "annotationStress": {
+    "passed": true,
+    "scenarios": 10,
+    "cancelledDatasetBudget": true
+  },
+  "annotationSafety": {
+    "passed": true,
+    "checks": 8
+  }
+}

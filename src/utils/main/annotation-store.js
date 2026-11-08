@@ -53,6 +53,14 @@ const pendingStatus = (row) => row.status === "unbound"
     : row.format === "TXT"
         ? "pending"
         : row.status;
+// Additive query indexes; formal entity/binding rows are never rewritten.
+const ensureAnnotationIndexes = db => db.exec(`
+  CREATE INDEX IF NOT EXISTS note_bindings_window ON note_bindings(book_id,generation,status,start_index,relative_start,relative_end);
+  CREATE INDEX IF NOT EXISTS note_bindings_window_cursor ON note_bindings(book_id,generation,status,id,start_index,relative_start,relative_end);
+  CREATE INDEX IF NOT EXISTS note_bindings_position ON note_bindings(note_key,status,start_index,relative_start,id);
+  CREATE INDEX IF NOT EXISTS notes_book_updated ON notes(bookKey,updated_at DESC,key);
+  CREATE INDEX IF NOT EXISTS notes_updated ON notes(updated_at DESC,key);
+`);
 const ensureAnnotationSchema = (db) => {
     if (migrations.has(db))
         return migrations.get(db);
@@ -64,7 +72,7 @@ const ensureAnnotationSchema = (db) => {
         if (exists) {
             if (db.prepare("SELECT version FROM annotation_schema").get()?.version !== 1)
                 throw new Error("Unsupported annotation schema");
-            db.exec("CREATE INDEX IF NOT EXISTS note_bindings_window ON note_bindings(book_id,generation,status,start_index,relative_start,relative_end)");
+            ensureAnnotationIndexes(db);
             return;
         }
         if (db.name !== ":memory:")
@@ -95,7 +103,7 @@ const ensureAnnotationSchema = (db) => {
                     db.exec(`CREATE UNIQUE INDEX ${table}_one ON ${table}(note_key) WHERE status!='unbound'`);
             }
         })();
-        db.exec("CREATE INDEX IF NOT EXISTS note_bindings_window ON note_bindings(book_id,generation,status,start_index,relative_start,relative_end)");
+        ensureAnnotationIndexes(db);
     })();
     migrations.set(db, pending);
     pending.catch(() => migrations.delete(db));
@@ -463,11 +471,26 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 where.push("EXISTS(SELECT 1 FROM json_each(n.tag) WHERE value=?)");
                 args.push(tag);
             }
-            const rows = db
-                .prepare(`SELECT n.key,n.bookKey,n.kind,n.title,substr(n.notes,1,160) AS notes,n.tag,n.date,n.version,n.updated_at,
-        (SELECT substr(quote,1,160) FROM note_bindings WHERE note_key=n.key AND status!='unbound' LIMIT 1) AS text
-        FROM notes n ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY ${c.sort === "position" ? `COALESCE((SELECT MIN(start_index) FROM note_bindings WHERE note_key=n.key AND status='active'),2147483647) ${c.order === "ASC" ? "ASC" : "DESC"},COALESCE((SELECT relative_start FROM note_bindings WHERE note_key=n.key AND status='active' ORDER BY start_index,relative_start,id LIMIT 1),0)` : "n.updated_at"} ${c.order === "ASC" ? "ASC" : "DESC"},n.key LIMIT ? OFFSET ?`)
-                .all(...args, limit, offset);
+            const direction = c.order === "ASC" ? "ASC" : "DESC";
+            const position = c.sort === "position";
+            const ordering = prefix => {
+                const column = name => prefix ? `${prefix}.${name}` : name;
+                return position
+                    ? `${column("position_start")} ${direction},${column("position_relative")} ${direction},${column("key")}`
+                    : `${column("updated_at")} ${direction},${column("key")}`;
+            };
+            // Materialize only the requested keys before fetching snippets or
+            // display bindings. Sorting must not read every entity's long body.
+            const rows = db.prepare(`WITH page AS MATERIALIZED (
+              SELECT n.key,n.updated_at${position ? `,
+                COALESCE((SELECT start_index FROM note_bindings WHERE note_key=n.key AND status='active' ORDER BY start_index,relative_start,id LIMIT 1),2147483647) AS position_start,
+                COALESCE((SELECT relative_start FROM note_bindings WHERE note_key=n.key AND status='active' ORDER BY start_index,relative_start,id LIMIT 1),0) AS position_relative` : ""}
+              FROM notes n ${where.length ? "WHERE " + where.join(" AND ") : ""}
+              ORDER BY ${ordering("")} LIMIT ? OFFSET ?
+            ) SELECT n.key,n.bookKey,n.kind,n.title,substr(n.notes,1,160) AS notes,n.tag,n.date,n.version,n.updated_at,
+              (SELECT substr(quote,1,160) FROM note_bindings WHERE note_key=n.key AND status!='unbound' LIMIT 1) AS text
+              FROM page p JOIN notes n ON n.key=p.key ORDER BY ${ordering("p")}`)
+              .all(...args,limit,offset);
             const result = rows.map((row) => dto(db, row, false));
             if (c.tab === "annotation")
                 return {
@@ -719,6 +742,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
         }
         if (c.action === "reading-window") {
             const book=identifier(c.bookKey), offset=c.offset??0, limit=c.limit??200;
+            const afterId=c.afterId===undefined?undefined:identifier(c.afterId);
             if(c.format!=="TXT" || !Array.isArray(c.blocks) || c.blocks.length>24 ||
                !Number.isSafeInteger(offset)||offset<0||offset>10000000||!Number.isSafeInteger(limit)||limit<1||limit>200)
                 throw Error("Invalid annotation window");
@@ -737,20 +761,20 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
             const predicates=c.blocks.map(()=>"(b.start_index=? AND b.relative_end>? AND b.relative_start<?)").join(" OR ");
             const args=c.blocks.flatMap(block=>[block.chapterIndex,block.start,block.end]);
             const rows=db.prepare(`SELECT b.id,b.note_key,b.style,b.start_index,b.relative_start,b.relative_end,b.version,n.notes!='' AS hasNote
-              FROM note_bindings b JOIN notes n ON n.key=b.note_key
-              WHERE b.book_id=? AND b.generation=? AND b.status='active' AND b.format='TXT' AND (${predicates})
-              ORDER BY b.id LIMIT ? OFFSET ?`).all(book,generation,...args,limit+1,offset);
+              FROM note_bindings b ${afterId ? "INDEXED BY note_bindings_window_cursor" : ""} JOIN notes n ON n.key=b.note_key
+              WHERE b.book_id=? AND b.generation=? AND b.status='active' AND b.format='TXT' AND (${predicates}) ${afterId ? 'AND b.id>?' : ''}
+              ORDER BY b.id LIMIT ? OFFSET ?`).all(book,generation,...args,...(afterId?[afterId]:[]),limit+1,afterId?0:offset);
             const related=[];
             // Chapter/range entities remain independent. Query their relations,
             // without importing note bodies or treating them as child highlights.
-            if(offset===0)for(const [kind,table] of Object.entries(TABLES).filter(([kind])=>kind!=="small")){
+            if(offset===0&&!afterId)for(const [kind,table] of Object.entries(TABLES).filter(([kind])=>kind!=="small")){
                 const indices=[...currentChapters.keys()];
                 const relation=db.prepare(`SELECT b.id AS bindingId,b.note_key AS entityKey,b.start_index AS startIndex,b.end_index AS endIndex,n.title,n.notes!='' AS hasNote
                   FROM ${table} b JOIN notes n ON n.key=b.note_key WHERE b.book_id=? AND b.generation=? AND b.status='active' AND (${indices.map(()=>"(b.start_index<=? AND b.end_index>=?)").join(" OR ")}) ORDER BY b.id LIMIT 201`)
                   .all(book,generation,...indices.flatMap(index=>[index,index]));
                 related.push(...relation.slice(0,200).map(row=>({...row,kind})));
             }
-            return {records:rows.slice(0,limit).map(row=>({key:row.id,entityKey:row.note_key,bindingId:row.id,color:row.style,hasNote:!!row.hasNote,notes:"",chapterIndex:row.start_index,txtAnchor:{start:row.relative_start,end:row.relative_end}})),related,hasMore:rows.length>limit};
+            return {records:rows.slice(0,limit).map(row=>({key:row.id,entityKey:row.note_key,bindingId:row.id,color:row.style,hasNote:!!row.hasNote,notes:"",chapterIndex:row.start_index,txtAnchor:{start:row.relative_start,end:row.relative_end}})),related,hasMore:rows.length>limit,nextCursor:rows.length>limit?rows[limit-1].id:undefined};
         }
         if (c.action === "reading") {
             const book = identifier(c.bookKey), index = c.chapterIndex;

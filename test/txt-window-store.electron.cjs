@@ -62,13 +62,14 @@ app.whenReady().then(async()=>{
     const plan=db.prepare("EXPLAIN QUERY PLAN SELECT id FROM note_bindings WHERE book_id=? AND generation=? AND status='active' AND start_index=? AND relative_end>? AND relative_start<?").all('fixture',note.bindings[0].generation,0,89990,90010);
     assert(plan.some(row=>row.detail.includes('note_bindings_window')));
   });
-  await check('fresh publication leaves prior formal content and snapshots pending, never paints an old offset',async()=>{
+  await check('verified unchanged-source publication recovers exact bindings and rejects old chapter identifiers',async()=>{
     const before=db.prepare('SELECT notes FROM notes WHERE key=?').get(note.key).notes;
     const rebuilt=(await txt({...base,ticket:opened.ticket,action:'prepare'},1)).index;
     await assert.rejects(call('reading-window',query));
-    const empty=await call('reading-window',{...query,blocks:[{...query.blocks[0],chapterId:rebuilt.chapters[0].chapterId}]});assert.equal(empty.records.length,0);
+    const recovered=await call('reading-window',{...query,blocks:[{...query.blocks[0],chapterId:rebuilt.chapters[0].chapterId}]});assert.equal(recovered.records.length,200);assert(recovered.hasMore);
+    assert.equal(db.prepare('SELECT quote FROM note_bindings WHERE id=?').get(note.bindings[0].id).quote,note.bindings[0].quote);
     assert.equal(db.prepare('SELECT notes FROM notes WHERE key=?').get(note.key).notes,before);
-    assert.equal(db.prepare("SELECT count(*) AS n FROM note_bindings WHERE status='pending'").get().n,252);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM note_bindings WHERE status='pending'").get().n,0);
   });
   fs.writeFileSync(report,JSON.stringify({passed:true,cases,userDatabaseOpened:false,nativeSqlite:true},null,2));txt.shutdown();db.close();app.exit(0);
 }).catch(error=>{console.error(error);fs.writeFileSync(report,JSON.stringify({passed:false,error:error.message}));txt?.shutdown();if(db?.open)db.close();app.exit(1);});
