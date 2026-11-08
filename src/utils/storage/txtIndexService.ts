@@ -50,6 +50,7 @@ const createSource = (
     return invoke({ ticket, ...data });
   };
   return {
+    sourceTicket: ticket,
     load: async (force: boolean) => {
       if (closed) throw new Error("TXT source is closed");
       return force ? null : cached;

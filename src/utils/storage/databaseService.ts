@@ -1,3 +1,4 @@
+import { AnnotationService, annotationCommand, listAnnotationPages, saveLegacyNote } from "./annotationService";
 import { isElectron } from "react-device-detect";
 import { getStorageLocation } from "../common";
 import localforage from "localforage";
@@ -9,12 +10,14 @@ declare var window: any;
 
 class DatabaseService {
   static async getDbBuffer(dbName: string) {
+    if (isElectron && dbName === "notes") { const bytes=await annotationCommand<Uint8Array>("export-database"); return new Uint8Array(bytes).buffer; }
     let sqlUtil = new SqlUtil();
     let records = await this.getAllRecords(dbName);
     return sqlUtil.JsonToDbBuffer(records, dbName);
   }
 
   static async getAllRecords(dbName: string) {
+    if (isElectron && dbName === "notes") return [...await listAnnotationPages({},true),...(await AnnotationService.list({tab:"annotation"})).records];
     if (isElectron) {
       let records = await window
         .electronAPI
@@ -45,6 +48,7 @@ class DatabaseService {
     }
   }
   static async saveAllRecords(records: any[], dbName: string, isRecord = true) {
+    if (isElectron && dbName === "notes") { for (const record of records) await saveLegacyNote(record); return; }
     if (isElectron) {
       for (let record of records) {
         try {
@@ -98,6 +102,7 @@ class DatabaseService {
     }
   }
   static async deleteAllRecords(dbName: string, isRecord = true) {
+    if (isElectron && dbName === "notes") { for (const row of await this.getAllRecords("notes")) await AnnotationService.delete(row); return; }
     let records = await this.getAllRecords(dbName);
     for (let record of records) {
       if (isRecord) {
@@ -129,6 +134,7 @@ class DatabaseService {
     }
   }
   static async saveRecord(record: any, dbName: string, isRecord = true) {
+    if (isElectron && dbName === "notes") return saveLegacyNote(record);
     if (isElectron) {
       await window.electronAPI.invoke("database-command", {
         statement: "saveStatement",
@@ -175,6 +181,7 @@ class DatabaseService {
     }
   }
   static async deleteRecord(key: string, dbName: string, isRecord = true) {
+    if (isElectron && dbName === "notes") { const note=await AnnotationService.get(key); if(note)await AnnotationService.delete(note); return; }
     if (isElectron) {
       await window.electronAPI.invoke("database-command", {
         statement: "deleteStatement",
@@ -204,6 +211,7 @@ class DatabaseService {
     }
   }
   static async updateRecord(record: any, dbName: string, isRecord = true) {
+    if (isElectron && dbName === "notes") return saveLegacyNote(record);
     if (isElectron) {
       await window.electronAPI.invoke("database-command", {
         statement: "updateStatement",
@@ -238,6 +246,7 @@ class DatabaseService {
     }
   }
   static async getRecord(key: string, dbName: string): Promise<any | null> {
+    if (isElectron && dbName === "notes") return AnnotationService.get(key);
     if (isElectron) {
       let record = await window
         .electronAPI
@@ -261,6 +270,7 @@ class DatabaseService {
     }
   }
   static async getAllRecordKeys(dbName: string): Promise<string[]> {
+    if (isElectron && dbName === "notes") return (await listAnnotationPages()).map(n=>n.key);
     if (isElectron) {
       let keys = await window
         .electronAPI
@@ -282,6 +292,7 @@ class DatabaseService {
     dbName: string,
     diagnosticContext?: DatabaseReadContext
   ): Promise<any[]> {
+    if (isElectron && dbName === "notes") { return [...await listAnnotationPages({bookKey},true),...(await AnnotationService.list({bookKey,tab:"annotation"})).records]; }
     if (isElectron) {
       return invokeMeasuredDatabaseRead(
         (channel, command) => window.electronAPI.invoke(channel, command),
@@ -304,6 +315,7 @@ class DatabaseService {
     bookKeys: string[],
     dbName: string
   ): Promise<any[]> {
+    if (isElectron && dbName === "notes") { return (await this.getAllRecords("notes")).filter(record=>bookKeys.includes(record.bookKey)); }
     if (isElectron) {
       let records = await window
         .electronAPI
@@ -325,6 +337,7 @@ class DatabaseService {
     keys: string[],
     dbName: string
   ): Promise<any[]> {
+    if (isElectron && dbName === "notes") { return (await Promise.all(keys.map(key=>AnnotationService.get(key)))).filter(Boolean); }
     if (isElectron) {
       let records = await window
         .electronAPI
@@ -347,6 +360,7 @@ class DatabaseService {
     dbName: string,
     isRecord = true
   ) {
+    if (isElectron && dbName === "notes") { for(const record of records)await saveLegacyNote(record);return; }
     if (isElectron) {
       for (let record of records) {
         try {
@@ -399,6 +413,7 @@ class DatabaseService {
     }
   }
   static async deleteRecordsByBookKey(bookKey: string, dbName: string) {
+    if (isElectron && dbName === "notes") { for(const note of await this.getRecordsByBookKey(bookKey,"notes"))await AnnotationService.delete(note); return; }
     let records = await this.getRecordsByBookKey(bookKey, dbName);
     for (let record of records) {
       ConfigService.setSyncRecord(

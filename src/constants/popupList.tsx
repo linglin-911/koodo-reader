@@ -1,3 +1,4 @@
+import { isElectron } from "react-device-detect";
 import { ConfigService } from "../assets/lib/kookit-extra-browser.min";
 
 export const POPUP_OPTION_LIMIT = 11;
@@ -5,6 +6,7 @@ export const POPUP_OPTION_ORDER_CONFIG = "popupOptionOrder";
 export const POPUP_OPTION_ENABLED_CONFIG = "popupOptionEnabled";
 
 export type PopupOptionKey =
+  | "add-to-small"
   | "note"
   | "highlight"
   | "translation"
@@ -25,6 +27,7 @@ export interface PopupOptionItem {
 }
 
 export const popupList: PopupOptionItem[] = [
+  {key:"add-to-small",name:"add-to-small",title:"Add to small annotation",icon:"note",defaultEnabled:true},
   {
     key: "note",
     name: "note",
@@ -133,7 +136,7 @@ export const getEnabledPopupOptionKeys = () => {
       : getDefaultEnabledPopupOptionKeys();
 
   return getPopupOptionOrder()
-    .filter((item) => normalizedSavedEnabled.includes(item))
+    .filter((item) => (isElectron || item !== "add-to-small") && normalizedSavedEnabled.includes(item))
     .slice(0, POPUP_OPTION_LIMIT);
 };
 

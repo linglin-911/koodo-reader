@@ -1,3 +1,4 @@
+import { canJumpAnnotation } from "../../../utils/reader/annotationUtil";
 import { useEffect, useRef, useState } from "react";
 import "./navigationPanel.css";
 import { isReadingRawPDF } from "../../../utils/common";
@@ -243,6 +244,7 @@ const NavigationPanel = (props: NavigationPanelProps) => {
 
   const handleSearchItemClick = async (item: any) => {
     let bookLocation = JSON.parse(item.cfi) || {};
+    if (!canJumpAnnotation(bookLocation, htmlBook.rendition)) return;
     await htmlBook.rendition.goToPosition(
       JSON.stringify({
         text: bookLocation.text,

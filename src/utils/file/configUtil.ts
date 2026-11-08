@@ -1,3 +1,4 @@
+import { AnnotationService, annotationCommand, listAnnotationPages } from "../storage/annotationService";
 import SyncService from "../storage/syncService";
 import {
   ConfigService,
@@ -164,6 +165,7 @@ class ConfigUtil {
   }
 
   static async getCloudDatabase(database: string) {
+    if (isElectron && database === "notes") return [];
     if (ConfigService.getReaderConfig("isEnableKoodoSync") === "yes") {
       let data = await this.getSyncData(database);
       return data || [];
@@ -208,6 +210,7 @@ class ConfigUtil {
     }
   }
   static async uploadDatabase(type: string) {
+    if (isElectron && type === "notes") return undefined;
     if (ConfigService.getReaderConfig("isEnableKoodoSync") === "yes") {
       let data = await DatabaseService.getAllRecords(type);
       if (type === "books") {
@@ -252,37 +255,7 @@ class ConfigUtil {
     order: string = "DESC"
   ) {
     if (isElectron) {
-      let queryString = "";
-      let data: any[] = [];
-      if (type === "note" && bookKey) {
-        queryString = `SELECT key, bookKey, chapterIndex FROM notes WHERE bookKey = ? AND notes != '' AND notes != 'annotation' ORDER BY ${sort} ${order}`;
-        data = [bookKey];
-      } else if (type === "highlight" && bookKey) {
-        queryString = `SELECT key, bookKey, chapterIndex FROM notes WHERE bookKey = ? AND notes = '' ORDER BY ${sort} ${order}`;
-        data = [bookKey];
-      } else if (type === "note" && !bookKey) {
-        queryString = `SELECT key, bookKey, chapterIndex FROM notes WHERE notes != '' AND notes != 'annotation' ORDER BY ${sort} ${order}`;
-      } else if (type === "highlight" && !bookKey) {
-        queryString = `SELECT key, bookKey, chapterIndex FROM notes WHERE notes = '' ORDER BY ${sort} ${order}`;
-      } else if (type === "annotation" && bookKey) {
-        queryString = `SELECT key, bookKey, chapterIndex FROM notes WHERE bookKey = ? AND notes = 'annotation' ORDER BY ${sort} ${order}`;
-        data = [bookKey];
-      } else if (type === "annotation" && !bookKey) {
-        queryString = `SELECT key, bookKey, chapterIndex FROM notes WHERE notes = 'annotation' ORDER BY ${sort} ${order}`;
-      } else if (!type && bookKey) {
-        queryString = `SELECT key, bookKey, chapterIndex FROM notes WHERE bookKey = ? ORDER BY ${sort} ${order}`;
-        data = [bookKey];
-      } else {
-        queryString = `SELECT key, bookKey, chapterIndex FROM notes ORDER BY ${sort} ${order}`;
-      }
-      const ipcRenderer = window.electronAPI;
-      return await ipcRenderer.invoke("custom-database-command", {
-        dbName: "notes",
-        storagePath: getStorageLocation(),
-        query: queryString,
-        data: data,
-        executeType: "all",
-      });
+      return listAnnotationPages({bookKey,tab:type,order});
     } else {
       let notes: Note[] = await DatabaseService.getAllRecords("notes");
       let filteredNotes = notes.filter((note) => {
@@ -322,47 +295,7 @@ class ConfigUtil {
     type: string
   ) {
     if (isElectron) {
-      const ipcRenderer = window.electronAPI;
-      let queryString = "";
-      let data: any[] = [];
-      if (type === "note" && bookKey) {
-        queryString = `SELECT * FROM notes WHERE bookKey = ? AND notes != '' AND notes != 'annotation' AND (notes LIKE ? OR text LIKE ?) ORDER BY key DESC`;
-        data = [
-          bookKey,
-          `%${keyword.toLowerCase()}%`,
-          `%${keyword.toLowerCase()}%`,
-        ];
-      } else if (type === "highlight" && bookKey) {
-        queryString = `SELECT * FROM notes WHERE bookKey = ? AND (notes = '' AND (notes LIKE ? OR text LIKE ?)) ORDER BY key DESC`;
-        data = [
-          bookKey,
-          `%${keyword.toLowerCase()}%`,
-          `%${keyword.toLowerCase()}%`,
-        ];
-      } else if (type === "note" && !bookKey) {
-        queryString = `SELECT * FROM notes WHERE (notes != '' AND notes != 'annotation' AND (notes LIKE ? OR text LIKE ?)) ORDER BY key DESC`;
-        data = [`%${keyword.toLowerCase()}%`, `%${keyword.toLowerCase()}%`];
-      } else if (type === "highlight" && !bookKey) {
-        queryString = `SELECT * FROM notes WHERE (notes = '' AND (notes LIKE ? OR text LIKE ?)) ORDER BY key DESC`;
-        data = [`%${keyword.toLowerCase()}%`, `%${keyword.toLowerCase()}%`];
-      } else if (!type && bookKey) {
-        queryString = `SELECT * FROM notes WHERE bookKey = ? AND (notes LIKE ? OR text LIKE ?) ORDER BY key DESC`;
-        data = [
-          bookKey,
-          `%${keyword.toLowerCase()}%`,
-          `%${keyword.toLowerCase()}%`,
-        ];
-      } else {
-        queryString = `SELECT * FROM notes WHERE (notes LIKE ? OR text LIKE ?) ORDER BY key DESC`;
-        data = [`%${keyword.toLowerCase()}%`, `%${keyword.toLowerCase()}%`];
-      }
-      return await ipcRenderer.invoke("custom-database-command", {
-        dbName: "notes",
-        storagePath: getStorageLocation(),
-        query: queryString,
-        data: data,
-        executeType: "all",
-      });
+      return listAnnotationPages({keyword,bookKey,tab:type});
     } else {
       let notes = await DatabaseService.getAllRecords("notes");
       let filteredNotes = notes.filter(
@@ -417,23 +350,7 @@ class ConfigUtil {
   }
   static async getNoteWithTags(tags: string[]) {
     if (isElectron) {
-      const ipcRenderer = window.electronAPI;
-      let queryString = "";
-      let data: any[] = [];
-      if (tags.length > 0) {
-        let instrArr = tags.map(() => "instr(tag, ?) > 0").join(" AND ");
-        queryString = `SELECT * FROM notes WHERE ${instrArr} ORDER BY key DESC`;
-        data = tags;
-      } else {
-        queryString = `SELECT * FROM notes ORDER BY key DESC`;
-      }
-      return await ipcRenderer.invoke("custom-database-command", {
-        dbName: "notes",
-        storagePath: getStorageLocation(),
-        query: queryString,
-        data: data,
-        executeType: "all",
-      });
+      return listAnnotationPages({tags});
     } else {
       let notes = await DatabaseService.getAllRecords("notes");
       let filteredNotes = notes.filter((note) => {
@@ -450,35 +367,7 @@ class ConfigUtil {
   }
   static async deleteTagFromNotes(tagName: string) {
     if (isElectron) {
-      const ipcRenderer = window.electronAPI;
-      let rawNotes: any[] = await ipcRenderer.invoke(
-        "custom-database-command",
-        {
-          dbName: "notes",
-          storagePath: getStorageLocation(),
-          query: `SELECT * FROM notes WHERE instr(tag, ?) > 0`,
-          data: [tagName],
-          executeType: "all",
-        }
-      );
-      let notes = rawNotes.map((item) =>
-        SqlStatement.sqliteToJson["notes"](item)
-      );
-      let updatedNotes = notes.map((item) => {
-        return {
-          ...item,
-          tag: item.tag.filter((subitem: string) => subitem !== tagName),
-        };
-      });
-      for (let i = 0; i < updatedNotes.length; i++) {
-        await ipcRenderer.invoke("custom-database-command", {
-          dbName: "notes",
-          storagePath: getStorageLocation(),
-          query: `UPDATE notes SET tag = ? WHERE key = ?`,
-          data: [JSON.stringify(updatedNotes[i].tag), updatedNotes[i].key],
-          executeType: "run",
-        });
-      }
+      await annotationCommand("remove-tag",{tag:tagName}); return;
     } else {
       let notes: any[] = await DatabaseService.getAllRecords("notes");
       let filteredNotes = notes.filter((note) => note.tag.includes(tagName));
@@ -495,14 +384,7 @@ class ConfigUtil {
   }
   static async getNoteList() {
     if (isElectron) {
-      const ipcRenderer = window.electronAPI;
-      let queryString = `SELECT key, bookKey, chapterIndex FROM notes ORDER BY key DESC`;
-      return await ipcRenderer.invoke("custom-database-command", {
-        dbName: "notes",
-        storagePath: getStorageLocation(),
-        query: queryString,
-        executeType: "all",
-      });
+      return listAnnotationPages();
     } else {
       let notes = await DatabaseService.getAllRecords("notes");
       notes.sort((a, b) => b.key - a.key);

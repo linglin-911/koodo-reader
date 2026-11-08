@@ -98,6 +98,8 @@ const initialReader = {
           ? "rgba(44,47,49,1)"
           : "rgba(255,255,255,1)",
   noteKey: "",
+  noteBindingId: "",
+  annotationAppend: false,
   originalText: "",
   originalSentence: "",
   quoteText: "",
@@ -253,6 +255,7 @@ export type AppActionName =
   | "handleNavLock"
   | "handleNewDialog"
   | "handleNewWarning"
+  | "handleAnnotationTarget"
   | "handleNoteKey"
   | "handleNoteSortCode"
   | "handleNotes"
@@ -923,7 +926,8 @@ export const useAppStore = create<AppState>()((set, get) => {
       setReader({ currentChapterIndex }),
     handleJumpPosition: (jumpPosition: object | null) =>
       setReader({ jumpPosition }),
-    handleNoteKey: (key: string) => setReader({ noteKey: key }),
+    handleNoteKey: (key: string) => setReader({ noteKey: key, noteBindingId: "", annotationAppend: false }),
+    handleAnnotationTarget: (key: string, bindingId = "", append = false) => setReader({noteKey:key,noteBindingId:bindingId,annotationAppend:append}),
     handleReaderMode: (readerMode: string) => setReader({ readerMode }),
     handleScale: (scale: string) => setReader({ scale }),
     handleBackgroundColor: (backgroundColor: string) =>

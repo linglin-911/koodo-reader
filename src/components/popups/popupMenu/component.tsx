@@ -184,7 +184,8 @@ const PopupMenu = (props: PopupMenuProps) => {
       ),
       t: t,
       onNoteClick: (event: Event) => {
-        handleNoteKey((event.target as any).dataset.key);
+        const element=(event.target as Element).closest<HTMLElement>("[data-key]");
+    useAppStore.getState().handleAnnotationTarget(element?.dataset.noteKey||element?.dataset.key||"",element?.dataset.bindingId||"");
         handleMenuMode("note");
         handleOpenMenu(true);
       },
@@ -235,6 +236,9 @@ const PopupMenu = (props: PopupMenuProps) => {
           },
         });
         break;
+      case "add-to-small":
+        useAppStore.getState().handleAnnotationTarget("","",true);
+        handleMenuMode("note");handleOpenMenu(true);break;
       case "note":
         handleMenuMode("note");
         showMenu();

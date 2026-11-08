@@ -777,7 +777,7 @@ const DataSetting = () => {
                 (note: any) =>
                   note.notes &&
                   note.notes.length > 0 &&
-                  note.notes !== "annotation"
+                  (note.kind ? note.kind !== "drawing" : note.notes !== "annotation")
               );
               if (notes.length > 0) {
                 const result = await exportNotes(notes, books, fmt);
@@ -832,7 +832,7 @@ const DataSetting = () => {
               setState({ exportHighlightsFormat: "" });
               let books = await DatabaseService.getAllRecords("books");
               let notes = await DatabaseService.getAllRecords("notes");
-              notes = notes.filter((note: any) => note.notes === "");
+              notes = notes.filter((note: any) => (!note.kind || note.kind === "small") && note.notes === "");
               if (notes.length > 0) {
                 const result = await exportHighlights(notes, books, fmt);
                 if (result === "success") {

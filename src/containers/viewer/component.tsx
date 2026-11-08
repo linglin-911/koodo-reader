@@ -1,3 +1,4 @@
+import { restoreAnnotations, annotationTarget } from "../../utils/reader/annotationUtil";
 import { useLatest } from "../../utils/hooks/useLatest";
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -198,6 +199,16 @@ const Viewer = (props: ViewerProps) => {
 
   const handleHighlight = async (rendition: any) => {
     if (!rendition) return;
+    if (isElectron) {
+      const chapterIndex = stateRef.current.chapterDocIndex;
+      await restoreAnnotations(propsRef.current.currentBook, rendition, chapterIndex);
+      if (stateRef.current.chapterDocIndex === chapterIndex &&
+          isReadingRawPDF(propsRef.current.currentBook) &&
+          (propsRef.current.readerMode === "double" || propsRef.current.readerMode === "scroll")) {
+        await restoreAnnotations(propsRef.current.currentBook, rendition, chapterIndex + 1);
+      }
+      return;
+    }
     const startedAt = performance.now();
     const traceId = rendition.diagnosticTraceId || "unknown";
     console.info(
@@ -337,7 +348,8 @@ const Viewer = (props: ViewerProps) => {
     );
   };
   const handleNoteClick = (event: Event) => {
-    propsRef.current.handleNoteKey((event.target as any).dataset.key);
+    const element=(event.target as Element).closest<HTMLElement>("[data-key]");
+    useAppStore.getState().handleAnnotationTarget(element?.dataset.noteKey||element?.dataset.key||"",element?.dataset.bindingId||"");
     propsRef.current.handleMenuMode("note");
     propsRef.current.handleOpenMenu(true);
   };

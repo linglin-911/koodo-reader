@@ -552,6 +552,14 @@ const createTxtIndexService = ({ getConnection, now = Date.now }) => {
       )
         retained.add(state.readGeneration);
     }
+    // Formal bindings keep their old snapshots available until explicit unlink
+    // or phase-5 reconciliation. Index rebuilding never deletes annotation data.
+    if (db.prepare("SELECT 1 FROM sqlite_master WHERE name='annotation_schema'").get()) {
+      for (const table of ["note_bindings", "chapter_bindings", "range_bindings"]) {
+        for (const row of db.prepare(`SELECT DISTINCT generation FROM ${table} WHERE book_id=? AND status!='unbound' AND generation IS NOT NULL`).all(t.request.bookId))
+          retained.add(row.generation);
+      }
+    }
     const retainedValues = [...retained];
     const retainedSql = retainedValues.map(() => "?").join(",");
     const commitStarted = performance.now();
@@ -606,8 +614,14 @@ const createTxtIndexService = ({ getConnection, now = Date.now }) => {
         `INSERT INTO txt_index_documents VALUES(?,?,?) ON CONFLICT(book_id) DO UPDATE
         SET active_generation=excluded.active_generation,document_revision=excluded.document_revision`
       ).run(t.request.bookId, generation, revision);
-      // Index generations are local cache only. Binding-aware retention remains
-      // a requirement before introducing formal annotation bindings in phase 4.
+      if (db.prepare("SELECT 1 FROM sqlite_master WHERE name='annotation_schema'").get()) {
+        for (const table of ["note_bindings", "chapter_bindings", "range_bindings"]) {
+          db.prepare(`UPDATE ${table} SET status='pending',version=version+1 WHERE book_id=? AND generation IS NOT ? AND status='active'`)
+            .run(t.request.bookId,generation);
+        }
+      }
+      // Index generations are rebuildable cache; retain generations referenced
+      // by formal bindings and open readers before collecting old entries.
       for (const table of ["txt_index_chapters", "txt_index_generations"]) {
         db.prepare(
           `DELETE FROM ${table} WHERE book_id=? AND generation NOT IN (${retainedSql})`
@@ -622,6 +636,27 @@ const createTxtIndexService = ({ getConnection, now = Date.now }) => {
       chapterCount: chapters.length,
       diagnostics: { batchCommitMs: performance.now() - commitStarted },
     };
+  };
+  run.describeChapter = async (owner,ticket,chapterIndex,chapterId,withText=false) => {
+    if (!validString(ticket,64) || !Number.isSafeInteger(chapterIndex) || chapterIndex<0 || !validString(chapterId,64)) throw new Error("Invalid chapter snapshot request");
+    const t=tickets.get(ticket);
+    if(!t||t.owner!==owner||!t.readGeneration)throw new Error("TXT source unavailable; reopen before annotating");
+    if(JSON.stringify(inspect(t.request).metadata)!==JSON.stringify(t.metadata))throw new Error("TXT source changed; reopen before annotating");
+    const db=await getConnection(t.request.storagePath);
+    const row=db.prepare(`SELECT c.*,g.document_revision FROM txt_index_chapters c
+      JOIN txt_index_generations g ON g.book_id=c.book_id AND g.generation=c.generation
+      JOIN txt_index_documents d ON d.book_id=c.book_id AND d.active_generation=c.generation
+      WHERE c.book_id=? AND c.generation=? AND c.chapter_index=? AND c.chapter_id=? AND g.state='ready'`)
+      .get(t.request.bookId,t.readGeneration,chapterIndex,chapterId);
+    if(!row)throw new Error("Chapter index changed; reopen before annotating");
+    const chapter={chapterId:row.chapter_id,index:row.chapter_index,label:row.name,start:row.utf16_start,end:row.utf16_end,
+      bodyStart:row.body_utf16_start,byteStart:row.byte_start,byteEnd:row.byte_end,bodyByteStart:row.body_byte_start,
+      firstChars:row.first_chars,lastChars:row.last_chars};
+    let text;
+    if(withText){const bytes=readVerifiedRange(t.request,t.metadata,row.byte_start,row.byte_end-row.byte_start);
+      text=new TextDecoder(t.metadata.encoding,{fatal:true,ignoreBOM:true}).decode(bytes).replace(/\r\n?/g,"\n");
+      if(text.length!==chapter.end-chapter.start)throw new Error("Chapter source no longer matches index");}
+    return {bookId:t.request.bookId,generation:t.readGeneration,documentRevision:row.document_revision,chapter,text};
   };
   run.releaseOwner = (owner) => {
     for (const [ticket, state] of tickets)

@@ -314,7 +314,7 @@ const SelectBook = () => {
                             )
                           ).filter(
                             (note) =>
-                              note.notes !== "" && note.notes !== "annotation"
+                              note.notes !== "" && (note.kind ? note.kind !== "drawing" : note.notes !== "annotation")
                           );
                           if (notes.length > 0) {
                             const result = await exportNotes(
@@ -411,7 +411,7 @@ const SelectBook = () => {
                               selectedBooks,
                               "notes"
                             )
-                          ).filter((note) => note.notes === "");
+                          ).filter((note) => (!note.kind || note.kind === "small") && note.notes === "");
                           if (highlights.length > 0) {
                             const result = await exportHighlights(
                               highlights,

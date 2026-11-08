@@ -26,6 +26,7 @@ const fs = require("fs");
 const fsExtra = require("fs-extra");
 const nodeCrypto = require("crypto");
 const { runDatabaseCommand } = require("./src/utils/main/database-diagnostics");
+const { createAnnotationService } = require("./src/utils/main/annotation-store");
 const { createTxtIndexService } = require("./src/utils/main/txt-index-store");
 const { createDatabaseConnections } = require("./src/utils/main/database-connections");
 const yauzl = require("yauzl");
@@ -477,6 +478,15 @@ const txtIndexService = createTxtIndexService({
     const { SqlStatement } = await import("./src/assets/lib/kookit-extra.min.mjs");
     return getDBConnection("notes", storagePath, SqlStatement.sqlStatement);
   },
+});
+const annotationService = createAnnotationService({
+  getConnection: async storagePath => {
+    const { SqlStatement } = await import("./src/assets/lib/kookit-extra.min.mjs");
+    return getDBConnection("notes",storagePath,SqlStatement.sqlStatement);
+  },
+  loadRegistry: async () => (await import("./src/assets/lib/kookit-extra.min.mjs")).SqlStatement,
+  describeTxt: (...args) => txtIndexService.describeChapter(...args),
+  Database,
 });
 const txtIndexOwners = new WeakSet();
 const getSyncUtil = async (config, isUseCache = true) => {
@@ -1204,6 +1214,7 @@ const createMainWin = () => {
     return voices;
   });
   ipcMain.handle("cloud-upload", async (event, config) => {
+    if (config?.type === "config" && config?.fileName === "notes.db") throw new Error("Legacy note cloud sync is disabled for formal annotations");
     let syncUtil = await getSyncUtil(config, config.isUseCache);
     let result = await syncUtil.uploadFile(
       config.fileName,
@@ -1214,6 +1225,7 @@ const createMainWin = () => {
   });
 
   ipcMain.handle("cloud-download", async (event, config) => {
+    if (config?.type === "config" && config?.fileName === "notes.db") throw new Error("Legacy note cloud sync is disabled for formal annotations");
     let syncUtil = await getSyncUtil(config);
     let result = await syncUtil.downloadFile(
       config.fileName,
@@ -1568,6 +1580,7 @@ const createMainWin = () => {
     }
   });
   ipcMain.handle("custom-database-command", async (event, config) => {
+    if (config?.dbName === "notes") throw new Error("Use controlled annotation commands for notes");
     const { SqlStatement } =
       await import("./src/assets/lib/kookit-extra.min.mjs");
     let { query, storagePath, data, dbName, executeType } = config;
@@ -1582,6 +1595,13 @@ const createMainWin = () => {
     return result;
   });
   ipcMain.handle("database-command", async (event, config) => {
+    if (config?.operation === "annotations") {
+      const started=performance.now();
+      const result=await annotationService(config,event.sender.id);
+      log.info(`[DIAG][Annotations] ${JSON.stringify({action:config.action,count:result?.records?.length,durationMs:Math.round((performance.now()-started)*10)/10})}`);
+      return result;
+    }
+    if (config?.dbName === "notes" && config?.operation !== "txt-index") throw new Error("Use controlled annotation commands for notes");
     if (config?.operation === "txt-index") {
       if (!txtIndexOwners.has(event.sender)) {
         txtIndexOwners.add(event.sender);
@@ -1632,7 +1652,8 @@ const createMainWin = () => {
   // 流式打包备份：遍历 dataPath 下的固定目录与配置文件，
   // 用 yazl 逐文件 addFile 直接写入目标 zip，避免将整库读入内存。
   ipcMain.handle("backup-path", async (event, config) => {
-    return backupToPath(config, (percent) => {
+    const annotations = await annotationService({dbName:"notes",storagePath:config.dataPath,action:"export"},event.sender.id);
+    return backupToPath({...config,annotations}, (percent) => {
       if (mainWin && !mainWin.isDestroyed()) {
         mainWin.webContents.send("backup-progress", { percent });
       }

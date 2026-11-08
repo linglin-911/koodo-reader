@@ -109,6 +109,7 @@ const backupToPath = async (config, sendProgress) => {
       for (const entry of entries) {
         zip.addFile(entry.sourcePath, entry.entryZip);
       }
+      if (config.annotations) zip.addBuffer(Buffer.from(JSON.stringify(config.annotations),"utf8"),"config/annotations.v1.json");
       zip.end();
       zip.outputStream.on("data", (chunk) => {
         writtenBytes += chunk.length;
@@ -198,6 +199,7 @@ const restoreFromPath = async (config, sendProgress) => {
     "snapshot/",
   ];
   const isConfigFile = (name) => {
+    if (name === "config/annotations.v1.json") return true;
     if (!name.startsWith("config/")) return false;
     const rest = name.slice("config/".length);
     if (rest.includes("/")) return false;

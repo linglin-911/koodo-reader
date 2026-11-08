@@ -1,4 +1,9 @@
+import type { AnnotationBinding, AnnotationKind } from "../utils/storage/annotationService";
 class Note {
+  kind?: AnnotationKind | "drawing";
+  title?: string;
+  version?: number;
+  bindings?: AnnotationBinding[];
   key: string;
   bookKey: string;
   date: { year: number; month: number; day: number };

@@ -1,3 +1,4 @@
+import { AnnotationService } from "../storage/annotationService";
 import BookUtil from "./bookUtil";
 import { isElectron } from "react-device-detect";
 import { checkMissingBook, getStorageLocation } from "../common";
@@ -117,6 +118,7 @@ export const generateSnapshot = async () => {
         });
       }
     }
+    entries.push({name:"config/annotations.v1.json",data:new TextEncoder().encode(JSON.stringify(await AnnotationService.export()))});
     const configStr = JSON.stringify(await ConfigUtil.dumpConfig("config"));
     entries.push({
       name: "config/config.json",

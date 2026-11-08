@@ -1,3 +1,4 @@
+import { canJumpAnnotation } from "../../../utils/reader/annotationUtil";
 import { useLatest } from "../../../utils/hooks/useLatest";
 import { useTranslation } from "react-i18next";
 import React, { useEffect, useRef, useState } from "react";
@@ -185,6 +186,7 @@ const NavList = (props: NavListProps) => {
         cfi: cfi,
       };
     }
+    if (!canJumpAnnotation(bookLocation, htmlBook.rendition)) return;
     const prevPosition = ConfigService.getObjectConfig(
       currentBook.key,
       "recordLocation",

@@ -28,7 +28,8 @@ const createDatabaseConnections = (Database) => {
           db.exec(sqlStatement.createTableStatement[dbName]);
           // Preserve legacy table handling. TXT schema migrations use their own
           // versioned transaction and propagate errors in txt-index-store.js.
-          for (const sql of sqlStatement.migrateStatement[dbName] || []) {
+          const formalNotes = dbName === "notes" && db.prepare("SELECT 1 FROM sqlite_master WHERE name='annotation_schema'").get();
+          for (const sql of formalNotes ? [] : sqlStatement.migrateStatement[dbName] || []) {
             try {
               db.exec(sql);
             } catch (error) {}

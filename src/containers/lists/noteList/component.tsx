@@ -1,3 +1,5 @@
+import { isElectron } from "react-device-detect";
+import AnnotationWorkspace from "../../../components/annotations/workspace";
 import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import "./noteList.css";
@@ -10,7 +12,7 @@ import BookUtil from "../../../utils/file/bookUtil";
 import Note from "../../../models/Note";
 import { useAppStore } from "../../../store/useAppStore";
 
-const NoteList = () => {
+const LegacyNoteList = () => {
   const notes = useAppStore((s) => s.reader.notes);
   const highlights = useAppStore((s) => s.reader.highlights);
   const isSearch = useAppStore((s) => s.manager.isSearch);
@@ -139,4 +141,5 @@ const NoteList = () => {
   );
 };
 
+const NoteList=()=>isElectron?<AnnotationWorkspace/>:<LegacyNoteList/>;
 export default NoteList;

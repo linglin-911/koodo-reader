@@ -1,3 +1,6 @@
+import { isElectron } from "react-device-detect";
+import { AnnotationService } from "../storage/annotationService";
+import { captureAnnotation, restoreAnnotations } from "./annotationUtil";
 import Note from "../../models/Note";
 import { isReadingRawPDF } from "../common";
 import DatabaseService from "../storage/databaseService";
@@ -30,6 +33,13 @@ export async function createHighlight(params: DigestParams): Promise<void> {
   } = params;
 
   if (!htmlBook) return;
+  if (isElectron) {
+    const binding=await captureAnnotation(currentBook,htmlBook.rendition,chapterDocIndex,chapter,color);
+    const note=await AnnotationService.save({bookKey:currentBook.key,kind:"small",notes:"",tag:[]});
+    await AnnotationService.bind(note.key,binding);
+    await restoreAnnotations(currentBook,htmlBook.rendition,chapterDocIndex);
+    onSuccess?.();return;
+  }
 
   let bookKey = currentBook.key;
   let bookLocation = ConfigService.getObjectConfig(

@@ -67,8 +67,8 @@ const fetchBookRecords = async (
 
 // 过滤规则与导出入口保持一致：notes 分为纯文字笔记与高亮两类
 const isTextNote = (note: any) =>
-  note.notes && note.notes.length > 0 && note.notes !== "annotation";
-const isHighlight = (note: any) => note.notes === "";
+  note.notes && note.notes.length > 0 && (note.kind ? note.kind !== "drawing" : note.notes !== "annotation");
+const isHighlight = (note: any) => (!note.kind || note.kind === "small") && note.notes === "";
 
 export const exportBooks = async (
   books: Book[]

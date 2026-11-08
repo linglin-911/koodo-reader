@@ -117,7 +117,8 @@ const PopupOption = (props: PopupOptionProps) => {
   };
 
   const handleNoteClick = (event: Event) => {
-    handleNoteKey((event.target as any).dataset.key);
+    const element=(event.target as Element).closest<HTMLElement>("[data-key]");
+    useAppStore.getState().handleAnnotationTarget(element?.dataset.noteKey||element?.dataset.key||"",element?.dataset.bindingId||"");
     handleMenuMode("note");
     handleOpenMenu(true);
   };
@@ -233,6 +234,9 @@ const PopupOption = (props: PopupOptionProps) => {
 
   const handleOptionClick = (optionKey: PopupOptionKey) => {
     switch (optionKey) {
+      case "add-to-small":
+        useAppStore.getState().handleAnnotationTarget("","",true);
+        handleMenuMode("note");handleOpenMenu(true);break;
       case "note":
         handleNote();
         break;

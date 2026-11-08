@@ -1,3 +1,5 @@
+import { isElectron } from "react-device-detect";
+import AnnotationEditor from "../../annotations/editor";
 import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import "./popupNote.css";
@@ -26,7 +28,7 @@ export interface PopupNoteProps {
 
 const highlightUtil: any = new HighlightUtil(ConfigService);
 
-const PopupNote = (props: PopupNoteProps) => {
+const LegacyPopupNote = (props: PopupNoteProps) => {
   const currentBook = useAppStore((s) => s.book.currentBook);
   const highlight = useAppStore((s) => s.reader.highlight);
   const htmlBook = useAppStore((s) => s.reader.htmlBook);
@@ -290,4 +292,16 @@ const PopupNote = (props: PopupNoteProps) => {
   );
 };
 
+const NativePopupNote = (props: PopupNoteProps) => {
+  const noteKey=useAppStore(s=>s.reader.noteKey),bindingId=useAppStore(s=>s.reader.noteBindingId),append=useAppStore(s=>s.reader.annotationAppend);
+  const currentBook=useAppStore(s=>s.book.currentBook),htmlBook=useAppStore(s=>s.reader.htmlBook);
+  const [drawing,setDrawing]=useState(false),[loadedKey,setLoadedKey]=useState<string|null>(null);
+  useEffect(()=>{let active=true;setDrawing(false);if(noteKey)void DatabaseService.getRecord(noteKey,"notes").then(note=>{if(active){setDrawing(note?.kind==="drawing");setLoadedKey(noteKey);}});return()=>{active=false;};},[noteKey]);
+  if(noteKey&&loadedKey!==noteKey)return null;
+  if(drawing)return <LegacyPopupNote {...props}/>;
+  return <AnnotationEditor key={noteKey||(append?"append":"new")} noteKey={noteKey||undefined} bindingId={bindingId} append={append} bookKey={currentBook?.key}
+    selection={!noteKey&&!!htmlBook?.rendition} chapterIndex={props.chapterDocIndex} chapter={props.chapter}
+    onClose={()=>{const store=useAppStore.getState();store.handleOpenMenu(false);store.handleShowPopupNote(false);store.handleMenuMode("");store.handleNoteKey("");}}/>;
+};
+const PopupNote=(props:PopupNoteProps)=>isElectron?<NativePopupNote {...props}/>:<LegacyPopupNote {...props}/>;
 export default PopupNote;

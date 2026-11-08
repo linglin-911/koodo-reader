@@ -111,8 +111,8 @@ const MoreAction = (
       ? () => true
       : isNotes
         ? (note: any) =>
-            note.notes && note.notes.length > 0 && note.notes !== "annotation"
-        : (note: any) => note.notes === "";
+            note.notes && note.notes.length > 0 && (note.kind ? note.kind !== "drawing" : note.notes !== "annotation")
+        : (note: any) => (!note.kind || note.kind === "small") && note.notes === "";
     const exportFn = (
       isWords
         ? exportDictionaryHistory

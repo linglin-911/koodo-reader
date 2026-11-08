@@ -1,3 +1,4 @@
+import { AnnotationService } from "../storage/annotationService";
 import { generateSyncRecord, getStorageLocation } from "../common";
 import { getCloudConfig, upgradeConfig, upgradeStorage } from "./common";
 import localforage from "localforage";
@@ -149,6 +150,11 @@ export const restoreFromBrowser = async (): Promise<
                 break;
               }
               ConfigService.setItem("syncRecord", text);
+            } else if (entryName === "annotations.v1.json" && isElectron) {
+              // Applied below after legacy config/database entries.
+            } else if (entryName === "notes.db" && isElectron) {
+              if (!zip.file("config/annotations.v1.json"))
+                await AnnotationService.importDatabase(await zip.file(fileName)!.async("arraybuffer"));
             } else if (entryName.endsWith(".db")) {
               const buf: ArrayBuffer = await zip
                 .file(fileName)!
@@ -165,6 +171,10 @@ export const restoreFromBrowser = async (): Promise<
             failed = true;
             break;
           }
+        }
+        if(!failed && isElectron && zip.file("config/annotations.v1.json")) {
+          try { await AnnotationService.import(JSON.parse(await zip.file("config/annotations.v1.json")!.async("string"))); }
+          catch { failed=true; }
         }
         if (failed) {
           resolve("failed");
@@ -410,6 +420,11 @@ export const restoreFromfilePath = async (filePath: string) => {
           break;
         }
         ConfigService.setItem("syncRecord", text);
+      } else if (entryName === "annotations.v1.json") {
+        // Import after all other configuration files, preserving the formal schema.
+      } else if (entryName === "notes.db") {
+        if (!configFiles.some(entry=>path.basename(entry.name)==="annotations.v1.json"))
+          await AnnotationService.importDatabase(file.buffer);
       } else if (entryName.endsWith(".db")) {
         const sqlUtil = new SqlUtil();
         const dbName = entryName.split(".")[0];
@@ -420,6 +435,10 @@ export const restoreFromfilePath = async (filePath: string) => {
       failed = true;
       break;
     }
+  }
+  if (!failed) {
+    const manifest=configFiles.find(entry=>path.basename(entry.name)==="annotations.v1.json");
+    if(manifest){try{await AnnotationService.import(JSON.parse(new TextDecoder().decode(manifest.buffer)));}catch{failed=true;}}
   }
   return !failed;
 };
