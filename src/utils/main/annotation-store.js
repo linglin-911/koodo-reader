@@ -28,6 +28,7 @@ const ACTIONS = new Set([
     "bind",
     "reading",
     "reading-window",
+    "recovery-results",
 ]);
 const validString = (value, max = 1024) => typeof value === "string" && value.length <= max && !value.includes("\0");
 const requireString = (value, max = 1024) => {
@@ -341,6 +342,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
         const describeChapter = (...args) => metrics.asyncStage("sourceValidationDurationMs", () => describeTxt(...args));
         const headers=new Map();
         const dto = (db, row, details = true) => metrics.convert(() => annotationDto(db, row, details,headers));
+        if (c.action === "recovery-results") return require("./txt-reconcile").recoveryResults(db,identifier(c.bookKey),c.offset??0,c.limit??50);
         if (c.action === "export")
             return exportData(db);
         if (c.action === "import")

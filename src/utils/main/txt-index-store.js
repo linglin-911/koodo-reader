@@ -74,6 +74,7 @@ const validateRequest = (c) => {
       "open",
       "commit",
       "prepare",
+      "rebuild",
       "ensure-blocks",
       "build-status",
       "read-preview",
@@ -96,7 +97,9 @@ const validateRequest = (c) => {
       !validString(c.bookPath || "") ||
       (c.bookPath && !path.isAbsolute(c.bookPath)) ||
       !validString(c.charset || "", 128) ||
-      !validString(c.parserRegex || "", 16384))
+      !validString(c.parserRegex || "", 16384) ||
+      (c.requireSelectedSource!==undefined&&typeof c.requireSelectedSource!=="boolean") ||
+      (c.requireSelectedSource&&!c.bookPath))
   )
     throw new Error("Invalid TXT source request");
   if (c.action !== "open" && (!validString(c.ticket, 64) || !c.ticket))
@@ -152,6 +155,8 @@ const validateIndex = (index, metadata) => {
     index.chapters.length > 1000000
   )
     throw new Error("Invalid TXT index header");
+  if(index.fullHash!==undefined && (!index.fullHash || index.fullHash.algorithm!=="sha256" ||
+      !/^[a-f0-9]{64}$/.test(index.fullHash.digest) || index.fullHash.bytes!==index.byteLength))throw Error("Invalid TXT full hash");
   // Optional additive sparse block metadata. Old valid v1 indexes remain usable.
   if (index.checkpoints !== undefined) {
     const points = index.checkpoints;
@@ -209,13 +214,20 @@ const validateIndex = (index, metadata) => {
   });
 };
 const STAGED = Symbol("private worker generation");
+const RECOVERY = Symbol("private binding snapshot");
+const { captureBindings, ensureRecoverySchema, planRecovery, applyRecovery } = require("./txt-reconcile");
 const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {} }) => {
   const tickets = new Map(), openingOwners = new Map();
   const { createTxtBuildTasks } = require("./txt-index-tasks");
   const tasks = createTxtBuildTasks({ getConnection, ensureSchema, validateIndex,
-    publish: (ticket, t, index, generation, mode) => mode === "checkpoints"
+    capture: async (db, book) => {
+      const snapshot=captureBindings(db,book);
+      if(snapshot.rows.length)await ensureRecoverySchema(db);
+      return snapshot;
+    },
+    publish: (ticket, t, index, generation, mode, snapshot) => mode === "checkpoints"
       ? addCheckpoints(ticket, t, index)
-      : run({ action: "commit", dbName: "notes", storagePath: t.request.storagePath, ticket, index, [STAGED]: generation }, t.owner),
+      : run({ action: "commit", dbName: "notes", storagePath: t.request.storagePath, ticket, index, [STAGED]: generation, [RECOVERY]: snapshot }, t.owner),
     ...taskOptions });
   // Add rebuildable acceleration metadata only. Never publish the temporary
   // Worker's chapter IDs, advance a document revision, or mark bindings pending.
@@ -254,6 +266,11 @@ const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {}
         // Read and validate the actual selected file BEFORE exposing any cached offsets.
         const started = performance.now();
         const snapshot = await inspectAsync(c);
+        if(c.requireSelectedSource){
+          const selected=await require("node:fs").promises.realpath(c.bookPath);
+          const normalized=value=>process.platform==='win32'?value.toLowerCase():value;
+          if(normalized(selected)!==normalized(snapshot.metadata.identity.realpath))throw Error("TXT_LIBRARY_SOURCE_AVAILABLE: The library original is still available");
+        }
         const sourceReadAndValidationMs = performance.now() - started;
         const persistentSupported = [
           "utf-8",
@@ -346,7 +363,7 @@ const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {}
       tickets.delete(c.ticket);
       return { closed: true };
     }
-    if (c.action === "prepare") return tasks.prepare(c.ticket, t);
+    if (c.action === "prepare" || c.action === "rebuild") return tasks.prepare(c.ticket, t);
     if (c.action === "ensure-blocks") {
       const db = await getConnection(c.storagePath), active = loadActive(db, t.request.bookId);
       if (!active?.index || active.generation !== t.readGeneration || t.base !== t.readGeneration)
@@ -462,6 +479,17 @@ const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {}
     const generation = c[STAGED] || crypto.randomUUID(),
       revision = crypto.randomUUID();
     const { chapters } = c.index;
+    const alive = () => {
+      if(tickets.get(c.ticket)!==t)throw Error("TXT source closed before recovery publication");
+    };
+    let recovery;
+    if(c[STAGED] && c[RECOVERY]?.rows.length) {
+      recovery = await planRecovery({snapshot:c[RECOVERY],chapters,fullHash:c.index.fullHash?.digest,configDigest:t.metadata.configDigest,contract:CONTRACT,
+        readBody:chapter=>require("./txt-source").readBodyChunks(t.request,t.metadata,chapter,alive),alive});
+      alive();
+      if(JSON.stringify((await inspectAsync(t.request)).metadata)!==JSON.stringify(t.metadata))throw Error("TXT source changed during recovery");
+      alive();
+    }
     // Whitelist every persisted field: an extra renderer payload must never
     // turn this local index into a storage location for full book text/HTML.
     const header = {
@@ -472,6 +500,7 @@ const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {}
       byteLength: c.index.byteLength,
       lineCount: c.index.lineCount,
       mode: c.index.mode,
+      ...(c[STAGED] && c.index.fullHash ? {fullHash:{algorithm:"sha256",digest:c.index.fullHash.digest,bytes:c.index.fullHash.bytes}} : {}),
       ...(c.index.checkpoints ? { checkpoints: c.index.checkpoints.map(([byte, text]) => [byte, text]) } : {}),
     };
     const previousGeneration =
@@ -503,6 +532,7 @@ const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {}
     const retainedValues = [...retained];
     const retainedSql = retainedValues.map(() => "?").join(",");
     const commitStarted = performance.now();
+    let recoveryCounts;
     db.transaction(() => {
       const active = db
         .prepare(
@@ -561,9 +591,13 @@ const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {}
         `INSERT INTO txt_index_documents VALUES(?,?,?) ON CONFLICT(book_id) DO UPDATE
         SET active_generation=excluded.active_generation,document_revision=excluded.document_revision`
       ).run(t.request.bookId, generation, revision);
-      if (db.prepare("SELECT 1 FROM sqlite_master WHERE name='annotation_schema'").get()) {
+      if (recovery) {
+        recoveryCounts=applyRecovery(db,t.request.bookId,generation,revision,recovery);
+      } else if (db.prepare("SELECT 1 FROM sqlite_master WHERE name='annotation_schema'").get()) {
+        // No captured references (or an unverified legacy commit): never guess
+        // offsets. Relations created during scanning retain their snapshots.
         for (const table of ["note_bindings", "chapter_bindings", "range_bindings"]) {
-          db.prepare(`UPDATE ${table} SET status='pending',version=version+1 WHERE book_id=? AND generation IS NOT ? AND status='active'`)
+          db.prepare(`UPDATE ${table} SET status='pending',version=version+1 WHERE book_id=? AND format='TXT' AND generation IS NOT ? AND status='active'`)
             .run(t.request.bookId,generation);
         }
       }
@@ -581,7 +615,9 @@ const createTxtIndexService = ({ getConnection, now = Date.now, taskOptions = {}
       generation,
       documentRevision: revision,
       chapterCount: chapters.length,
-      diagnostics: { batchCommitMs: performance.now() - commitStarted },
+      diagnostics: { batchCommitMs: performance.now() - commitStarted,
+        ...(recovery?{recoveryCandidateChapters:recovery.candidateReads,recoveryBindings:recovery.plans.length,
+          recoveredBindings:recoveryCounts.active,pendingBindings:recoveryCounts.pending,invalidBindings:recoveryCounts.invalid,recoveryConflicts:recoveryCounts.conflicts}:{}) },
     };
   };
   run.describeChapter = async (owner,ticket,chapterIndex,chapterId,withText=false) => {

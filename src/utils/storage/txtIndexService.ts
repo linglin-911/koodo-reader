@@ -40,11 +40,11 @@ export interface TxtDirectory {
   chapters: { chapterId: string; index: number; label: string }[];
 }
 export interface TxtBuildProgress {
-  state: "queued" | "building" | "idle" | "failed" | "cancelled";
-  reason?: "line-limit" | "timeout";
+  state: "queued" | "building" | "recovering" | "idle" | "failed" | "cancelled";
+  reason?: "line-limit" | "timeout" | "source-missing";
   bytes?: number; total?: number; chapters?: number; canPreview?: boolean; preview?: string;
 }
-interface SourceOptions { signal?: AbortSignal; onProgress?: (progress: TxtBuildProgress | null) => void; }
+interface SourceOptions { requireSelectedSource?: boolean; signal?: AbortSignal; onProgress?: (progress: TxtBuildProgress | null) => void; }
 const CHAPTER_CHUNK_BYTES = 256 * 1024;
 type Invoke = (command: Record<string, unknown>) => Promise<unknown>;
 type Chapter = TxtIndexSnapshot["chapters"][number];
@@ -78,7 +78,7 @@ const createSource = (
       return force ? null : cached;
     },
     ensureBlocks: (): Promise<TxtIndexSnapshot> => source.prepare("ensure-blocks"),
-    prepare: (action: "prepare" | "ensure-blocks" = "prepare"): Promise<TxtIndexSnapshot> => {
+    prepare: (action: "prepare" | "ensure-blocks" | "rebuild" = "prepare"): Promise<TxtIndexSnapshot> => {
       if (preparing) return preparing;
       preparing = (async () => {
         let active = true, timer: ReturnType<typeof setTimeout> | undefined, preview: string | undefined;
@@ -197,6 +197,7 @@ export const openPersistentTxt = async (
     bookPath,
     charset,
     parserRegex,
+    ...(options.requireSelectedSource ? {requireSelectedSource:true} : {}),
   })) as {
     ticket: string | null;
     buffer?: Uint8Array;

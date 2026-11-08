@@ -166,8 +166,9 @@ const resolveSourceAsync = async c => {
     if (error.code !== "ENOENT") throw error;
     selected = c.bookPath;
   }
-  if (!selected) throw Error("TXT source is unavailable");
-  return fs.promises.realpath(selected);
+  if (!selected) throw Error("TXT_SOURCE_UNAVAILABLE: TXT source is unavailable");
+  try { return await fs.promises.realpath(selected); }
+  catch(error){if(error.code==="ENOENT")throw Error("TXT_SOURCE_UNAVAILABLE: TXT source is unavailable");throw error;}
 };
 const readExactly = async (fd, start, length) => {
   const buffer = Buffer.alloc(length);
@@ -209,4 +210,21 @@ const readVerifiedRangeAsync = async (request, metadata, start, length) => {
     return buffer;
   } finally { await fd.close(); }
 };
-module.exports = { inspect, inspectAsync, readVerifiedRange, readVerifiedRangeAsync, readExactly, statIdentity };
+async function* readBodyChunks(request,metadata,chapter,alive=()=>{}) {
+  alive();
+  if(JSON.stringify((await inspectAsync(request)).metadata)!==JSON.stringify(metadata))throw Error("TXT source changed before recovery");
+  const fd=await fs.promises.open(metadata.identity.realpath,"r");
+  const same=stat=>JSON.stringify(statIdentity(metadata.identity.realpath,stat))===JSON.stringify(metadata.identity);
+  const decoder=new TextDecoder(metadata.encoding,{fatal:true,ignoreBOM:true});let cr="";
+  const normalize=(text,final=false)=>{text=cr+text;cr=!final&&text.endsWith("\r")?"\r":"";if(cr)text=text.slice(0,-1);return text.replace(/\r\n?/g,"\n");};
+  try {
+    if(!same(await fd.stat({bigint:true})))throw Error("TXT source changed before recovery");
+    for(let offset=chapter.bodyByteStart;offset<chapter.byteEnd;){
+      alive();const length=Math.min(256*1024,chapter.byteEnd-offset),bytes=await readExactly(fd,offset,length);offset+=length;
+      alive();yield normalize(decoder.decode(bytes,{stream:true}));
+    }
+    yield normalize(decoder.decode(),true);alive();
+    if(!same(await fd.stat({bigint:true}))||JSON.stringify((await inspectAsync(request)).metadata)!==JSON.stringify(metadata))throw Error("TXT source changed during recovery");
+  } finally {await fd.close();}
+}
+module.exports = { readBodyChunks, inspect, inspectAsync, readVerifiedRange, readVerifiedRangeAsync, readExactly, statIdentity };

@@ -1,4 +1,5 @@
 import TxtIndexProgress from "./txtIndexProgress";
+import { relocateTxt } from "../../utils/storage/txtRecoveryService";
 import type { TxtBuildProgress } from "../../utils/storage/txtIndexService";
 import { restoreAnnotations, annotationTarget } from "../../utils/reader/annotationUtil";
 import { useLatest } from "../../utils/hooks/useLatest";
@@ -360,11 +361,12 @@ const Viewer = (props: ViewerProps) => {
     propsRef.current.handleMenuMode("note");
     propsRef.current.handleOpenMenu(true);
   };
-  const handleRenderBook = async () => {
+  const handleRenderBook = async (sourcePath?: string) => {
     if (lock) return;
     const openVersion = ++openVersionRef.current;
     const openStartedAt = performance.now();
     let { key, path, format, name } = propsRef.current.currentBook;
+    if (sourcePath) path = sourcePath;
     console.info(
       `[DIAG][Reader] openBook:start ${JSON.stringify({
         format,
@@ -428,7 +430,7 @@ const Viewer = (props: ViewerProps) => {
         await persistentTxt?.store?.close();
         const message = error instanceof Error ? error.message : "";
         if (!controller.signal.aborted) setTxtProgress({ state: "failed",
-          reason: message.includes("custom parser line exceeds") ? "line-limit" : message.includes("timed out") ? "timeout" : undefined });
+          reason: message.includes("TXT_SOURCE_UNAVAILABLE") ? "source-missing" : message.includes("custom parser line exceeds") ? "line-limit" : message.includes("timed out") ? "timeout" : undefined });
         return;
       }
     } else if (
@@ -1134,7 +1136,13 @@ const Viewer = (props: ViewerProps) => {
     <>
       {txtProgress && <TxtIndexProgress progress={txtProgress}
         cancel={() => { txtOpenRef.current?.abort(); setTxtProgress({ state: "cancelled" }); }}
-        retry={() => void handleRenderBook()} />}
+        retry={() => void handleRenderBook()}
+        locate={() => {
+          const controller = new AbortController(); txtOpenRef.current?.abort(); txtOpenRef.current = controller;
+          void relocateTxt(propsRef.current.currentBook, {signal:controller.signal,onProgress:progress=>{if(!controller.signal.aborted)setTxtProgress(progress);}})
+            .then(book=>{if(book&&!controller.signal.aborted)void handleRenderBook(book.path);})
+            .catch(()=>{if(!controller.signal.aborted)setTxtProgress({state:"failed",reason:"source-missing"});});
+        }} />}
       {htmlBook && !isReadingAid ? (
         <PopupMenu
           {...({

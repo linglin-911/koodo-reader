@@ -73,7 +73,11 @@ export const restoreAnnotations = async (
   if (windowState) {
     const rows:import("../storage/annotationService").ReadingAnnotation[]=[];const related:unknown[]=[];
     for(let offset=0;;offset+=200){
-      const page=await AnnotationService.readingWindow({bookKey:book.key,format:"TXT",sourceTicket:rendition.txtIndexStore?.sourceTicket,blocks:windowState.blocks,offset},{traceId:rendition.diagnosticTraceId});
+      const page=await AnnotationService.readingWindow({bookKey:book.key,format:"TXT",sourceTicket:rendition.txtIndexStore?.sourceTicket,blocks:windowState.blocks,offset},{traceId:rendition.diagnosticTraceId}).catch(error=>{
+        if(restoreVersions.get(rendition)!==version||rendition.getTxtWindowState?.()?.key!==windowState.key)return undefined;
+        throw error;
+      });
+      if(!page)return;
       if(restoreVersions.get(rendition)!==version || rendition.getTxtWindowState?.()?.key!==windowState.key || rendition.getTxtWindowState?.()?.generation!==windowState.generation)return;
       rows.push(...page.records);related.push(...page.related);
       if(!page.hasMore)break;

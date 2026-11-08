@@ -10,13 +10,14 @@ const readRows = (db, book, generation) => db.prepare(`SELECT chapter_id AS chap
   .all(book, generation).map(c => ({ ...c, hasTitle: !!c.hasTitle, fixedChunk: !!c.fixedChunk }));
 module.exports.createTxtBuildTasks = ({ getConnection, ensureSchema, validateIndex, publish,
   workerPath = path.join(__dirname, "txt-index-worker.js"), stallTimeoutMs = 15000, beforeBatch = async () => {},
-  onWorker = () => {} }) => {
+  onWorker = () => {}, capture = async () => null }) => {
   const tasks = new Map(), byTicket = new Map(), queue = [];
   let running = false, stopped = false;
   const alive = task => { if (!task.consumers.size || stopped) throw abortError(); };
   async function execute(task) {
     const t = task.source, book = t.request.bookId, db = await getConnection(t.request.storagePath);
     await ensureSchema(db); alive(task);
+    task.recoverySnapshot = await capture(db, book); alive(task);
     // building rows have no reader or binding references. Recover only this
     // book's interrupted cache work; ready/old referenced generations survive.
     db.transaction(() => {
@@ -69,10 +70,11 @@ module.exports.createTxtBuildTasks = ({ getConnection, ensureSchema, validateInd
       const index = { ...result.header, chapters: readRows(db, book, task.generation) };
       validateIndex(index, t.metadata);
       let publication;
+      if(task.mode !== "checkpoints") task.state = "recovering";
       while (true) {
         alive(task);
         const [ticket, consumer] = task.consumers.entries().next().value;
-        try { publication = await publish(ticket, consumer.source, index, task.generation, task.mode); break; }
+        try { publication = await publish(ticket, consumer.source, index, task.generation, task.mode, task.recoverySnapshot); break; }
         catch (error) {
           if (task.consumers.has(ticket) || !task.consumers.size) throw error;
         }
@@ -81,7 +83,7 @@ module.exports.createTxtBuildTasks = ({ getConnection, ensureSchema, validateInd
       // own ticket. No cancelled/closed consumer can revive a released ticket.
       for (const consumer of task.consumers.values()) { consumer.source.base = publication?.generation || task.generation; consumer.source.readGeneration = publication?.generation || task.generation; }
       task.bytes = t.metadata.identity.size;
-      return { index: publication?.index || index, diagnostics: { workerScans: 1, scannedBytes: result.readBytes, maximumBatchRows: 128 } };
+      return { index: publication?.index || index, diagnostics: { ...publication?.diagnostics, workerScans: 1, scannedBytes: result.readBytes, maximumBatchRows: 128, fullSourceHashBytes:result.header.fullHash?.bytes||0 } };
     } finally {
       clearInterval(watchdog);
       if (worker) await worker.terminate();

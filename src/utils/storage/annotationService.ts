@@ -85,7 +85,14 @@ export const annotationCommand = <T = unknown>(
   }, context);
 export interface AnnotationWindowBlock { chapterIndex:number; chapterId:string; start:number; end:number; }
 export interface ReadingAnnotation { key:string;entityKey:string;bindingId:string;color:string;hasNote:boolean;notes:string;chapterIndex:number;txtAnchor?:{start:number;end:number}; }
+export interface RecoveryResults {
+  generation?: string;
+  records: Array<{binding_id:string;note_key:string;kind:AnnotationKind;status:string;reason:string;label:string;title:string}>;
+  counts: Partial<Record<"active"|"pending"|"invalid",number>>;
+  hasMore: boolean;
+}
 export const AnnotationService = {
+  recoveryResults: (bookKey:string,offset=0) => annotationCommand<RecoveryResults>("recovery-results",{bookKey,offset,limit:50}),
   readingWindow: (data: {bookKey:string;format:"TXT";sourceTicket?:string;blocks:AnnotationWindowBlock[];offset:number}, context:DatabaseReadContext={}) =>
     annotationCommand<{records:ReadingAnnotation[];related:unknown[];hasMore:boolean}>("reading-window",{...data,limit:200},context),
   create: (note:{bookKey:string;kind:AnnotationKind;notes:string;tag:string[];title?:string},binding:BindingInput) =>

@@ -7,6 +7,7 @@ import {
 } from "../../utils/storage/annotationService";
 import { useAppStore } from "../../store/useAppStore";
 import AnnotationEditor from "./editor";
+import TxtRecoveryPanel from "./txtRecoveryPanel";
 import "./annotations.css";
 const labels = {
   small: "Small annotation",
@@ -99,6 +100,7 @@ export default function AnnotationWorkspace() {
           ))}
         </select>
       </div>
+      {books.find(item => item.key === book)?.format === "TXT" && <TxtRecoveryPanel key={book} book={books.find(item => item.key === book)!} />}
       <ul className="annotation-entities">
         {rows.map((note) => (
           <li key={note.key}>
