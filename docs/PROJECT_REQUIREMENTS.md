@@ -19,8 +19,8 @@
 
 | 仓库 | Windows 本地路径 | 当前工作分支 |
 |---|---|---|
-| [Koodo Reader](https://github.com/linglin-911/koodo-reader) | \`D:\07_ProgramFiles\Koodo-innoo\koodo-reader\` | \`diagnostics/phase1-logging\` |
-| [Kookit](https://github.com/linglin-911/kookit) | \`D:\07_ProgramFiles\Kookit-innoo\kookit\` | \`diagnostics/phase1-logging\` |
+| [Koodo Reader](https://github.com/linglin-911/koodo-reader) | `D:\07_ProgramFiles\Koodo-innoo\koodo-reader` | `diagnostics/phase1-logging` |
+| [Kookit](https://github.com/linglin-911/kookit) | `D:\07_ProgramFiles\Kookit-innoo\kookit` | `diagnostics/phase1-logging` |
 
 ## 2. 目前进度（截至 2026-11-09）
 
@@ -82,13 +82,13 @@
 
 ## 6. 数据安全、性能与开发约束
 
-- **正式批注不可清空**：旧测试 Note/高亮的清理授权仅适用于**阶段 4 首次迁移之前**且已使用完毕。已有 \`annotation_schema\` 的库、新建批注、绑定、原文、绘图、书签、阅读进度必须保护。
-- 数据库操作只通过 \`database-command\` IPC，不在 Renderer 直接操作 SQLite；新增查询必须受控。书籍与正式用户数据仍在 Koodo 原书库。
+- **正式批注不可清空**：旧测试 Note/高亮的清理授权仅适用于**阶段 4 首次迁移之前**且已使用完毕。已有 `annotation_schema` 的库、新建批注、绑定、原文、绘图、书签、阅读进度必须保护。
+- 数据库操作只通过 `database-command` IPC，不在 Renderer 直接操作 SQLite；新增查询必须受控。书籍与正式用户数据仍在 Koodo 原书库。
 - 不能用全书批注正文缓存掩盖性能问题；批注列表分页/虚拟化、详情按需读取，章节选择不得一次渲染几千选项。
 - 修改涉及 Kookit 时，只编辑源码并正常构建对应桌面产物，不直接读取混淆/压缩库文件猜实现。
 - 开发前核对两个仓库分支/HEAD/工作区与远端差异；保留无关改动。实现后按影响范围运行自动测试及人工实书验证，记录**已实现 / 自动验证 / 用户实测 / 待测**。
-- 默认仅提交到当前工作分支，不强制推送、改写历史或直接提交主分支；需要远端更新时按当前授权及 \`AGENTS.md\` 执行。
-- Windows 使用 \`yarn.cmd\` / \`npm.cmd\`；常用 \`yarn.cmd dev\`、\`yarn.cmd typecheck\`、\`yarn.cmd test\`、\`yarn.cmd build\`。完整 Electron/Node/Kookit 回归命令参见 [技术细节文档](TXT_IMPLEMENTATION_DETAILS.md#1-项目范围与环境)。
+- 默认仅提交到当前工作分支，不强制推送、改写历史或直接提交主分支；需要远端更新时按当前授权及 `AGENTS.md` 执行。
+- Windows 使用 `yarn.cmd` / `npm.cmd`；常用 `yarn.cmd dev`、`yarn.cmd typecheck`、`yarn.cmd test`、`yarn.cmd build`。完整 Electron/Node/Kookit 回归命令参见 [技术细节文档](TXT_IMPLEMENTATION_DETAILS.md#1-项目范围与环境)。
 
 ## 7. 文档维护方式
 
