@@ -184,6 +184,8 @@ const annotationDto = (db, row, details = true, headers = new Map()) => {
         tagRefs: tagRefs(db, row.key),
         date: JSON.parse(row.date),
         bindings: all,
+        bindingCount: db.prepare(`SELECT count(*) AS n FROM ${TABLES[row.kind]} WHERE note_key=? AND status!='unbound'`).get(row.key).n,
+        chapterLabels: db.prepare(`SELECT DISTINCT COALESCE(json_extract(anchor_json,'$.chapter.label'),json_extract(anchor_json,'$.start.label'),'') AS label FROM ${TABLES[row.kind]} WHERE note_key=? AND status!='unbound' LIMIT 3`).all(row.key).map(item=>item.label),
         chapter: snapshot?.label || "",
         chapterIndex: first?.start_index ?? -1,
         text: first?.quote || row.text || "",

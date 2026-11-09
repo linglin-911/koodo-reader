@@ -1249,5 +1249,7 @@
   "Tag name": "标签名称",
   "Write an annotation before saving": "请先填写批注正文",
   "Selected source text": "所选原文",
-  "No annotations in this chapter": "本章暂无批注"
+  "No annotations in this chapter": "本章暂无批注",
+  "Annotation details": "批注详情",
+  "Delete annotation?": "删除此批注及其绑定位置？"
 }

@@ -57,6 +57,8 @@ export interface AnnotationEntity {
   bookKey: string;
   kind: AnnotationKind;
   title: string;
+  bindingCount?:number;
+  chapterLabels?:string[];
   notes: string;
   tag: string[];
   tagRefs: AnnotationTag[];

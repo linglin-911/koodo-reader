@@ -164,9 +164,7 @@ const LegacyNoteList = (props:{onManage?:()=>void}) => {
   );
 };
 
-const NoteList=()=>{
-  const [workspace,setWorkspace]=useState(false);
-  const {t}=useTranslation();
-  return isElectron&&workspace?<><button className="annotation-workspace-back" onClick={()=>setWorkspace(false)}>{t("Back")}</button><AnnotationWorkspace/></>:<LegacyNoteList onManage={isElectron?()=>setWorkspace(true):undefined}/>;
-};
+// UI-4: Electron opens the single-book workspace directly. The old mixed
+// notes/highlights screen remains only for the unchanged web route.
+const NoteList=()=>isElectron?<AnnotationWorkspace/>:<LegacyNoteList/>;
 export default NoteList;
