@@ -14,6 +14,27 @@
   min-width: 0;
   height: 100%;
   overflow: hidden;
+  display: flex;
+}
+.reader-main {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+/* Preserve shortcut targets while hiding all former hover controls. */
+.reader-legacy-controls {
+  display: none;
+}
+.reader-workspace > .navigation-panel-container[hidden],
+.reader-workspace > .setting-panel-container[hidden] {
+  display: none;
+}
+/* Panels now stay open until dismissed; the old pin controls have no role. */
+.reader-workspace > .navigation-panel-container .nav-lock-icon,
+.reader-workspace > .setting-panel-container .lock-icon {
+  display: none;
 }
 .reader-window-drag-region {
   position: fixed;
@@ -97,23 +118,24 @@
   align-items: center;
   cursor: pointer;
 }
-.setting-panel-container {
+.reader-workspace > .setting-panel-container,
+.reader-workspace > .navigation-panel-container {
+  position: relative;
+  flex: 0 0 299px;
   width: 299px;
-  height: 100vh;
-  position: absolute;
-  top: 0px;
-  right: 0px;
-  transition: transform 0.5s ease;
+  height: 100%;
+  min-height: 0;
+  border-left: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  box-sizing: content-box;
   z-index: 15;
 }
-.navigation-panel-container {
-  width: 299px;
-  height: 100vh;
+.reader-workspace > .navigation-panel-container .navigation-header {
   position: absolute;
-  top: 0px;
-  left: 0px;
-  transition: transform 0.5s ease;
-  z-index: 15;
+  top: 0;
+  left: 0;
+}
+.reader-workspace > .navigation-panel-container .navigation-panel {
+  animation: fade-right 0.2s ease-in-out;
 }
 .view-area-page {
   position: absolute;

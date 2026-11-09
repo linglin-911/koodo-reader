@@ -7,6 +7,8 @@ import { ConfigService } from '/src/assets/lib/kookit-extra-browser.min';
 import { useAppStore } from '/src/store/useAppStore.ts';
 import { getPageWidth } from '/src/utils/common.ts';
 import { changeLanguage } from '/src/i18n.tsx';
+import '/src/assets/styles/reset.css';
+import '/src/assets/styles/global.css';
 import '/src/assets/styles/style.css';
 
 export async function run() {
@@ -57,18 +59,91 @@ export async function run() {
   assert(parseFloat(fit.pageWidth) === workspace.clientWidth - 106, 'Fit-page width includes toolbar');
   assert(area.getBoundingClientRect().right < toolbar.getBoundingClientRect().left, 'Actual page intrudes into toolbar');
   cases++;
-  buttons[0].click();
-  await wait(() => buttons[0].getAttribute('aria-expanded') === 'true', 'Directory button did not open existing navigation');
-  buttons[0].click();
-  await wait(() => buttons[0].getAttribute('aria-expanded') === 'false', 'Directory button did not toggle closed');
-  buttons[2].click();
-  await wait(() => buttons[2].getAttribute('aria-expanded') === 'true', 'Settings button did not open existing settings');
-  await new Promise(resolve => setTimeout(resolve, 550));
-  await wait(() => document.getElementById('reader-settings-panel')!.getBoundingClientRect().right <= toolbar.getBoundingClientRect().left + 1, 'Settings obscures toolbar: ' + JSON.stringify({ settings: document.getElementById('reader-settings-panel')!.getBoundingClientRect().toJSON(), toolbar: toolbar.getBoundingClientRect().toJSON(), transform: getComputedStyle(document.getElementById('reader-settings-panel')!).transform }));
-  buttons[2].click();
+  const stableRendition = rendition();
+  const stableFrame = stableRendition.getIframe();
+  const selectionDocument = stableRendition.getDocument()!;
+  const selectedNode = selectionDocument.querySelector('[data-txt-start]')!.firstChild!;
+  const range = selectionDocument.createRange();
+  range.setStart(selectedNode, 0); range.setEnd(selectedNode, 4);
+  selectionDocument.getSelection()!.removeAllRanges();
+  selectionDocument.getSelection()!.addRange(range);
+  const selectedText = selectionDocument.getSelection()!.toString();
+  const navigation = document.getElementById('reader-navigation-panel')!;
+  const settings = document.getElementById('reader-settings-panel')!;
+  const main = document.querySelector<HTMLElement>('.reader-main')!;
+  const mainWidth = main.clientWidth;
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  // Hovering either edge must never expose the former controls or open panels.
+  document.dispatchEvent(new MouseEvent('mousemove', { clientX: window.innerWidth - 70, clientY: 10, bubbles: true }));
+  await delay(700);
+  for (const control of document.querySelectorAll<HTMLElement>('.reader-legacy-controls .reader-setting-icon-container, .reader-legacy-controls .reader-bottom-toolbar')) {
+    assert(control.getClientRects().length === 0, 'Former hover controls remain visible');
+  }
+  assert(navigation.hidden && settings.hidden && !document.querySelector('.quick-buttons-shown'), 'Hover opened a panel or hid chapter headers');
+  const bookmarkButton = document.querySelector<HTMLElement>('.reader-toolbar-bookmark');
+  assert(!!bookmarkButton, 'Hidden bookmark shortcut target was removed');
+  bookmarkButton!.click();
+  await wait(() => useAppStore.getState().viewArea.isShowBookmark, 'Hidden bookmark shortcut target did not save a bookmark');
   cases++;
-  await rendition().goToChapterDocIndex(5);
+
+  buttons[0].click();
+  await wait(() => !navigation.hidden && main.clientWidth < mainWidth, 'Directory button did not open right column');
+  assert(navigation.parentElement === main.parentElement, 'Directory is not a sibling column');
+  assert(Math.abs(navigation.getBoundingClientRect().left - main.getBoundingClientRect().right) < 1 && Math.abs(navigation.getBoundingClientRect().right - toolbar.getBoundingClientRect().left) < 1, 'Directory is not beside the toolbar on the right');
+  // Old pinned preferences must not double-reserve columns or prevent outside dismissal.
+  flushSync(() => useAppStore.setState(state => ({ reader: { ...state.reader, isNavLocked: true, isSettingLocked: true } })));
+  navigation.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: main }));
+  main.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+  await delay(700);
+  assert(!navigation.hidden, 'Directory closes when the mouse leaves');
+  navigation.querySelector<HTMLElement>('.book-title')!.click();
+  await delay(30);
+  assert(!navigation.hidden, 'Clicking within directory dismissed it');
+  await window.electronAPI.invoke('reader-toolbar-preview', 'navigation');
+  main.click();
+  await wait(() => navigation.hidden && main.clientWidth === mainWidth, 'Outside click did not dismiss directory/restore content width');
+  cases++;
+
+  buttons[2].click();
+  await wait(() => !settings.hidden && main.clientWidth < mainWidth, 'Settings button did not open right column');
+  settings.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: main }));
+  await delay(700);
+  assert(!settings.hidden, 'Settings closes when the mouse leaves');
+  settings.querySelector<HTMLElement>('.setting-panel-title')!.click();
+  await delay(30);
+  assert(!settings.hidden, 'Clicking within settings dismissed it');
+  assert(settings.parentElement === main.parentElement && Math.abs(settings.getBoundingClientRect().left - main.getBoundingClientRect().right) < 1, 'Settings overlays the reading column');
+  await window.electronAPI.invoke('reader-toolbar-preview', 'settings');
+  buttons[0].click();
+  await wait(() => settings.hidden && !navigation.hidden, 'Toolbar did not switch between the two right panels');
+  buttons[0].click();
+  await wait(() => navigation.hidden && settings.hidden, 'Toolbar did not toggle the active panel closed');
+  cases++;
+
+  for (const index of [0, 2]) {
+    buttons[index].click();
+    const panel = index === 0 ? navigation : settings;
+    await wait(() => !panel.hidden, 'Panel did not reopen');
+    await delay(700);
+    await wait(() => !!rendition().getDocument()?.querySelector('[data-txt-start]'), 'Resized TXT frame did not settle');
+    rendition().getDocument()!.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await wait(() => panel.hidden, 'Clicking actual TXT iframe did not dismiss panel');
+  }
+  flushSync(() => useAppStore.setState(state => ({ reader: { ...state.reader, isNavLocked: false, isSettingLocked: false } })));
+  assert(rendition() === stableRendition && rendition().getIframe() === stableFrame, 'Panel changes replaced the continuous TXT rendition/frame');
+  assert(selectionDocument.getSelection()!.toString() === selectedText, 'Panel changes lost the active source selection');
+  selectionDocument.getSelection()!.removeAllRanges();
+  cases++;
+  buttons[0].click();
+  await wait(() => !navigation.hidden, 'Directory did not reopen for chapter navigation');
+  const chapterLink = navigation.querySelectorAll<HTMLElement>('.content-chapter-title')[5];
+  assert(!!chapterLink, 'Directory chapter entry is missing');
+  chapterLink.click();
   await wait(() => Number(rendition().getPosition().chapterDocIndex) === 5, 'Directory navigation failed');
+  assert(!navigation.hidden, 'Choosing a directory chapter dismissed the panel');
+  main.click();
+  await wait(() => navigation.hidden && main.clientWidth === mainWidth, 'Directory did not close after navigation/outside click');
+  cases++;
   const widthBeforeResize = workspace.clientWidth;
   await window.electronAPI.invoke('reader-toolbar-resize', 900);
   await wait(() => workspace.clientWidth < widthBeforeResize && !!rendition().getDocument()?.querySelector('[data-txt-start]'), 'Workspace failed to resize');
@@ -82,5 +157,8 @@ export async function run() {
   flushSync(() => useAppStore.getState().handleBackgroundColor('#2c2f31'));
   assert(getComputedStyle(toolbar).backgroundColor === 'rgb(44, 47, 49)' && getComputedStyle(toolbar).color === 'rgb(221, 221, 221)', 'Toolbar does not follow reader theme');
   cases++;
+  ConfigService.setReaderConfig('textColor', '#302d29');
+  flushSync(() => useAppStore.getState().handleBackgroundColor('#f5f0e6'));
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(undefined))));
   return { passed: true, cases, fullReader: true, continuousTxt: true, userDatabaseOpened: false };
 }

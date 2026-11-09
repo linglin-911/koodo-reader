@@ -67,6 +67,7 @@ import { useAppStore } from "../../store/useAppStore";
 import BookModel from "../../models/Book";
 
 export interface ViewerProps {
+  isPanelLayout?: boolean;
   book: BookModel;
   rendition: any;
 
@@ -99,8 +100,10 @@ const gestureBoundDocs = new WeakSet<Document>();
 const Viewer = (props: ViewerProps) => {
   const currentBook = useAppStore((s) => s.book.currentBook);
   const htmlBook = useAppStore((s) => s.reader.htmlBook);
-  const isNavLocked = useAppStore((s) => s.reader.isNavLocked);
-  const isSettingLocked = useAppStore((s) => s.reader.isSettingLocked);
+  const storedNavLocked = useAppStore((s) => s.reader.isNavLocked);
+  const isNavLocked = props.isPanelLayout ? false : storedNavLocked;
+  const storedSettingLocked = useAppStore((s) => s.reader.isSettingLocked);
+  const isSettingLocked = props.isPanelLayout ? false : storedSettingLocked;
   const isDockedRight = useAppStore((s) => s.reader.isDockedRight);
   const isOpenMenu = useAppStore((s) => s.viewArea.isOpenMenu);
   const isAuthed = useAppStore((s) => s.manager.isAuthed);
@@ -1066,6 +1069,9 @@ const Viewer = (props: ViewerProps) => {
           )
         );
       });
+      // Continuous TXT already observes #page-area and preserves its text anchor.
+      // Recreating it here would discard active selection on every panel toggle.
+      if (props.isPanelLayout && renditionRef.current?.isTxtWindowActive?.()) return;
       if (lock) {
         pendingRerenderRef.current = true;
       } else {
@@ -1073,8 +1079,20 @@ const Viewer = (props: ViewerProps) => {
       }
     });
     resizeHandlerRef.current = resizeHandler;
-    window.addEventListener("resize", resizeHandler);
+    // Observe the actual content column, including right-panel width changes.
+    const content = props.isPanelLayout ? document.querySelector(".reader-main") : null;
+    let lastWidth = content?.clientWidth;
+    let lastHeight = content?.clientHeight;
+    const observer = content ? new ResizeObserver(() => {
+      if (content.clientWidth === lastWidth && content.clientHeight === lastHeight) return;
+      lastWidth = content.clientWidth;
+      lastHeight = content.clientHeight;
+      resizeHandler();
+    }) : null;
+    if (content) observer!.observe(content);
+    else window.addEventListener("resize", resizeHandler);
     return () => {
+      observer?.disconnect();
       openVersionRef.current++;
       txtOpenRef.current?.abort();
       pendingRerenderRef.current = false;
@@ -1211,14 +1229,14 @@ const Viewer = (props: ViewerProps) => {
               }
         }
       ></div>
-      <PageWidget />
+      <PageWidget isPanelLayout={props.isPanelLayout} />
       {isHideBackground ||
       textOrientation === "vertical" ||
       isShowPageBorder ||
       ((isParagraphMode || isReadingRuler || isSpeedReading) &&
         !isReadingRawPDF(currentBook)) ||
       isMergeWord ? null : currentBook.key ? (
-        <Background />
+        <Background isPanelLayout={props.isPanelLayout} />
       ) : null}
     </>
   );

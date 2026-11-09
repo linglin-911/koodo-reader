@@ -174,12 +174,7 @@ const NavigationPanel = (props: NavigationPanelProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentBook.key]);
 
-  const isLeftPanelOpen = () => {
-    const el = document.querySelector(
-      ".navigation-panel-container"
-    ) as HTMLElement | null;
-    return !!el && !el.style.transform;
-  };
+  const isLeftPanelOpen = () => props.isOpen;
 
   const handleChangeTab = (currentTab: string) => {
     setState((prev) => ({ ...prev, currentTab }));

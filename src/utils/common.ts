@@ -641,6 +641,7 @@ export const openInBrowser = (url: string) => {
   isElectron ? window.electronAPI.shell.openExternal(url) : window.open(url);
 };
 export const getReaderWidth = () =>
+  document.querySelector<HTMLElement>(".reader-main")?.clientWidth ||
   document.querySelector<HTMLElement>(".reader-workspace")?.clientWidth ||
   document.body.clientWidth;
 

@@ -34,41 +34,21 @@ import ReaderTopToolbar from "../../components/readerTopToolbar";
 import ReaderSideToolbar from "../../components/readerSideToolbar";
 import { READING_PANEL_TOGGLE_EVENT } from "../../utils/reader/mouseEvent";
 import { getReaderWidth, isPaginatedBook, throttle } from "../../utils/common";
-import { getOuterDoc } from "../../utils/reader/docUtil";
 import { useAppStore } from "../../store/useAppStore";
 
-const QUICK_BUTTON_EDGE_DISTANCE = 40;
-const POPUP_BOX_MENU_MODES = ["note", "trans", "dict", "assistant"];
+// Keep legacy controls mounted for existing shortcuts, without hover UI.
+const keepLegacyControlsHidden = () => {};
 
 export interface ReaderState {
   isOpenRightPanel: boolean;
   isOpenLeftPanel: boolean;
-  isTouch: boolean;
-  isPreventTrigger: boolean;
-  hoverPanel: string;
-  isNearEdge: boolean;
   totalDuration: number;
   currentDuration: number;
 }
 
 declare var window: any;
-let isMouseMoving = false;
 const PANEL_POSITIONS = ["left", "right"] as const;
 type PanelPosition = (typeof PANEL_POSITIONS)[number];
-const PANEL_ENTER_DELAY = 500;
-const PANEL_LEAVE_DELAY = 500;
-const enterTimers: Record<string, NodeJS.Timeout | null> = {
-  left: null,
-  right: null,
-};
-const leaveTimers: Record<string, NodeJS.Timeout | null> = {
-  left: null,
-  right: null,
-};
-const isEdgeHovering: Record<string, boolean> = {
-  left: false,
-  right: false,
-};
 const PANEL_OPEN_STATE: Record<
   PanelPosition,
   "isOpenLeftPanel" | "isOpenRightPanel"
@@ -80,6 +60,7 @@ const Reader = () => {
   const currentBook = useAppStore((s) => s.book.currentBook);
   const htmlBook = useAppStore((s) => s.reader.htmlBook);
   const readerMode = useAppStore((s) => s.reader.readerMode);
+  const backgroundColor = useAppStore((s) => s.reader.backgroundColor);
   const isNavLocked = useAppStore((s) => s.reader.isNavLocked);
   const isConvertOpen = useAppStore((s) => s.reader.isConvertOpen);
   const isScaleOpen = useAppStore((s) => s.reader.isScaleOpen);
@@ -94,8 +75,6 @@ const Reader = () => {
   const isSettingLocked = useAppStore((s) => s.reader.isSettingLocked);
   const isDockedRight = useAppStore((s) => s.reader.isDockedRight);
   const isSettingOpen = useAppStore((s) => s.manager.isSettingOpen);
-  const isOpenMenu = useAppStore((s) => s.viewArea.isOpenMenu);
-  const menuMode = useAppStore((s) => s.viewArea.menuMode);
   const handleFetchBooks = useAppStore((s) => s.handleFetchBooks);
   const handleReadingBook = useAppStore((s) => s.handleReadingBook);
   const handleFetchPercentage = useAppStore((s) => s.handleFetchPercentage);
@@ -151,23 +130,15 @@ const Reader = () => {
   };
   const propsRef = useLatest(currentProps);
   const [state, setState] = useState<ReaderState>({
-    hoverPanel: "",
     isOpenLeftPanel: isNavLocked,
-    isOpenRightPanel: isSettingLocked,
+    isOpenRightPanel: isSettingLocked && !isNavLocked,
     totalDuration: 0,
     currentDuration: 0,
-    isTouch: ConfigService.getReaderConfig("isTouch") === "yes",
-    isPreventTrigger:
-      ConfigService.getReaderConfig("isPreventTrigger") === "yes",
-    isNearEdge: false,
   });
   const stateRef = useLatest(state);
   const updateState = (patch: Partial<ReaderState>) =>
     setState((prev) => ({ ...prev, ...patch }));
-  const messageTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const tickTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
-  const autoShowTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const hideQuickButtonsTimerRef = useRef<NodeJS.Timeout | null>(null);
   const dialogAnchorIconRef = useRef<HTMLElement | null>(null);
   const didMountRef = useRef(false);
   useEffect(() => {
@@ -219,100 +190,34 @@ const Reader = () => {
     );
   }
 
-  const cancelEnterReader = (position: string) => {
-    isEdgeHovering[position] = false;
-    if (enterTimers[position]) {
-      clearTimeout(enterTimers[position]!);
-      enterTimers[position] = null;
-    }
-  };
-
-  const scheduleEnterReader = (position: string) => {
-    cancelEnterReader(position);
-    isEdgeHovering[position] = true;
-    const delay = stateRef.current.isPreventTrigger ? 0 : PANEL_ENTER_DELAY;
-    enterTimers[position] = setTimeout(() => {
-      enterTimers[position] = null;
-      if (!isEdgeHovering[position] || isMouseMoving) return;
-      handleEnterReader(position);
-    }, delay);
-  };
-
-  const cancelLeaveReader = (position: string) => {
-    if (leaveTimers[position]) {
-      clearTimeout(leaveTimers[position]!);
-      leaveTimers[position] = null;
-    }
-  };
-
-  const scheduleLeaveReader = (position: string) => {
-    cancelLeaveReader(position);
-    leaveTimers[position] = setTimeout(() => {
-      leaveTimers[position] = null;
-      handleLeaveReader(position);
-    }, PANEL_LEAVE_DELAY);
-  };
-
-  const handleEdgeMouseEnter = (position: PanelPosition) => {
-    if (
-      stateRef.current.isTouch ||
-      stateRef.current[PANEL_OPEN_STATE[position]] ||
-      stateRef.current.isPreventTrigger
-    ) {
-      cancelLeaveReader(position);
-      updateState({ hoverPanel: position });
-      return;
-    }
-    scheduleEnterReader(position);
-  };
-
-  const handleEdgeMouseLeave = (position: PanelPosition) => {
-    cancelEnterReader(position);
-    updateState({ hoverPanel: "" });
-  };
-
+  // "left" remains the existing navigation command name; both panels live on the right.
   const handleEnterReader = (position: string) => {
-    cancelEnterReader(position);
-    cancelLeaveReader(position);
-    switch (position) {
-      case "right":
-        updateState({
-          isOpenRightPanel: true,
-        });
-        break;
-      case "left":
-        updateState({
-          isOpenLeftPanel: true,
-        });
-        break;
-      default:
-        break;
+    if (position === "left") {
+      updateState({ isOpenLeftPanel: true, isOpenRightPanel: false });
+    } else if (position === "right") {
+      updateState({ isOpenLeftPanel: false, isOpenRightPanel: true });
     }
   };
   const handleLeaveReader = (position: string) => {
-    cancelLeaveReader(position);
-    switch (position) {
-      case "right":
-        if (propsRef.current.isSettingLocked) {
-          break;
-        } else {
-          updateState({ isOpenRightPanel: false });
-          break;
-        }
-
-      case "left":
-        if (
-          propsRef.current.isNavLocked ||
-          ConfigService.getReaderConfig("isTempLocked") === "yes"
-        ) {
-          break;
-        } else {
-          updateState({ isOpenLeftPanel: false });
-          break;
-        }
-      default:
-        break;
+    if (position === "left" && stateRef.current.isOpenLeftPanel) {
+      updateState({ isOpenLeftPanel: false });
+    } else if (position === "right" && stateRef.current.isOpenRightPanel) {
+      updateState({ isOpenRightPanel: false });
     }
+  };
+  const handleOutsidePanelClick = (event: MouseEvent) => {
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    // Toolbar buttons switch/toggle panels themselves, without a second close.
+    if (target instanceof Element && target.closest(".reader-side-toolbar button")) return;
+    const activePanel = stateRef.current.isOpenLeftPanel
+      ? document.getElementById("reader-navigation-panel")
+      : stateRef.current.isOpenRightPanel
+        ? document.getElementById("reader-settings-panel")
+        : null;
+    if (!activePanel || activePanel.contains(target)) return;
+    handleLeaveReader("left");
+    handleLeaveReader("right");
   };
   const handleReadingPanelToggle = (event: Event) => {
     const position = (event as CustomEvent<{ position: string }>).detail
@@ -356,7 +261,7 @@ const Reader = () => {
     const iconCenter = iconRect.left + iconRect.width / 2;
     const viewportWidth = getReaderWidth();
     const reservedRight =
-      propsRef.current.isSettingLocked || propsRef.current.isDockedRight
+      propsRef.current.isDockedRight
         ? 300
         : 0;
     const dialogWidth = dialog.offsetWidth;
@@ -403,34 +308,6 @@ const Reader = () => {
       }, 200);
     },
   });
-  const showQuickButtons = () => {
-    if (autoShowTimerRef.current) {
-      clearTimeout(autoShowTimerRef.current);
-      autoShowTimerRef.current = null;
-    }
-    if (hideQuickButtonsTimerRef.current) {
-      clearTimeout(hideQuickButtonsTimerRef.current);
-      hideQuickButtonsTimerRef.current = null;
-    }
-    if (!stateRef.current.isNearEdge) {
-      updateState({ isNearEdge: true });
-    }
-  };
-  const hideQuickButtons = () => {
-    if (hideQuickButtonsTimerRef.current) {
-      clearTimeout(hideQuickButtonsTimerRef.current);
-    }
-    hideQuickButtonsTimerRef.current = setTimeout(() => {
-      hideQuickButtonsTimerRef.current = null;
-      if (stateRef.current.isNearEdge) {
-        updateState({ isNearEdge: false });
-      }
-    }, 200);
-  };
-  const isWithinEdgeZone = (pageY: number) =>
-    pageY <= QUICK_BUTTON_EDGE_DISTANCE ||
-    window.innerHeight - pageY <= QUICK_BUTTON_EDGE_DISTANCE;
-
   useEffect(() => {
     const run = async () => {
       let url = document.location.href;
@@ -509,130 +386,33 @@ const Reader = () => {
         ConfigService.setReaderConfig("isFinishWebReading", "yes");
       }
     });
-    let latestPointerY: number | null = null;
-    const updateQuickButtons = () => {
-      if (latestPointerY === null) return;
-      if (isWithinEdgeZone(latestPointerY)) {
-        showQuickButtons();
-      } else {
-        hideQuickButtons();
-      }
-    };
-    const throttledMouseMove = throttle(updateQuickButtons, 100);
-    const handleMouseMove = (e: MouseEvent) => {
-      isMouseMoving = true;
-      setTimeout(() => {
-        isMouseMoving = false;
-      }, 100);
-      latestPointerY = e.clientY;
-      throttledMouseMove();
-    };
-    const handleWindowMouseLeave = () => {
-      latestPointerY = null;
-      hideQuickButtons();
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    document.documentElement.addEventListener(
-      "mouseleave",
-      handleWindowMouseLeave
-    );
+    document.addEventListener("click", handleOutsidePanelClick, true);
+    const repositionDialogs = throttle(updateSettingDialogPosition, 100);
     window.addEventListener(
       READING_PANEL_TOGGLE_EVENT,
       handleReadingPanelToggle
     );
-    window.addEventListener("resize", updateSettingDialogPosition);
+    window.addEventListener("resize", repositionDialogs);
 
-    // Show quick buttons briefly after entering the reader
-    updateState({ isNearEdge: true });
-    autoShowTimerRef.current = setTimeout(() => {
-      autoShowTimerRef.current = null;
-      updateState({ isNearEdge: false });
-    }, 1500);
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      document.documentElement.removeEventListener(
-        "mouseleave",
-        handleWindowMouseLeave
-      );
+      document.removeEventListener("click", handleOutsidePanelClick, true);
       window.removeEventListener(
         READING_PANEL_TOGGLE_EVENT,
         handleReadingPanelToggle
       );
-      window.removeEventListener("resize", updateSettingDialogPosition);
-      if (hideQuickButtonsTimerRef.current) {
-        clearTimeout(hideQuickButtonsTimerRef.current);
-        hideQuickButtonsTimerRef.current = null;
-      }
+      window.removeEventListener("resize", repositionDialogs);
+      repositionDialogs.cancel();
       if (isElectron) {
         clearDiscordPresence();
       }
       if (tickTimerRef.current) {
         clearInterval(tickTimerRef.current);
       }
-      if (autoShowTimerRef.current) {
-        clearTimeout(autoShowTimerRef.current);
-        autoShowTimerRef.current = null;
-      }
-      PANEL_POSITIONS.forEach((position) => {
-        cancelEnterReader(position);
-        cancelLeaveReader(position);
-      });
       // Flush any in-flight session time before the component tears down
       readingTimeUtilRef.current!.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!htmlBook) return;
-    const attachedDocs = new WeakSet<Document>();
-    const getPageClientY = (doc: Document, clientY: number) => {
-      let y = clientY;
-      let win: Window | null = doc.defaultView;
-      while (win && win.frameElement) {
-        y += win.frameElement.getBoundingClientRect().top;
-        win = win.parent;
-      }
-      return y;
-    };
-    const attachEdgeHandlers = (doc: Document) => {
-      let latestPointerY: number | null = null;
-      const updateQuickButtons = throttle(() => {
-        if (latestPointerY === null) return;
-        if (isWithinEdgeZone(getPageClientY(doc, latestPointerY))) {
-          showQuickButtons();
-        } else {
-          hideQuickButtons();
-        }
-      }, 100);
-      doc.addEventListener("mousemove", (e: MouseEvent) => {
-        latestPointerY = e.clientY;
-        updateQuickButtons();
-      });
-      doc.documentElement.addEventListener("mouseleave", () => {
-        latestPointerY = null;
-        hideQuickButtons();
-      });
-    };
-    const attachToDoc = (doc: Document | null) => {
-      if (!doc || attachedDocs.has(doc)) return;
-      attachedDocs.add(doc);
-      attachEdgeHandlers(doc);
-    };
-    const collectDocs = () => {
-      const outerDoc = getOuterDoc();
-      attachToDoc(outerDoc);
-      if (!outerDoc) return;
-      outerDoc.querySelectorAll("iframe").forEach((iframe) => {
-        attachToDoc((iframe as HTMLIFrameElement).contentDocument);
-      });
-    };
-    collectDocs();
-    const attachTimer = setInterval(collectDocs, 800);
-    return () => {
-      clearInterval(attachTimer);
-    };
-  }, [htmlBook]);
 
   useEffect(() => {
     if (!didMountRef.current) {
@@ -650,164 +430,122 @@ const Reader = () => {
   const isMacOS =
     isElectron && window.electronAPI?.runtime?.platform === "darwin";
   const isMergeWord = ConfigService.getReaderConfig("isMergeWord") === "yes";
-  const isUndockedPopupBoxOpen =
-    !isDockedRight && isOpenMenu && POPUP_BOX_MENU_MODES.includes(menuMode);
   const renditionProps = {
     handleLeaveReader: handleLeaveReader,
     handleEnterReader: handleEnterReader,
     isShow: state.isOpenLeftPanel || state.isOpenRightPanel,
+    isPanelLayout: true,
   };
   return (
-    <div
-      className={"viewer" + (state.isNearEdge ? " quick-buttons-shown" : "")}
-    >
+    <div className="viewer">
       <div className="reader-workspace">
-        <Tooltip id="my-tooltip" style={{ zIndex: 25 }} />
-        {isSeparateElectronWindow && (
-          <div className="reader-window-drag-region" />
-        )}
+        <div className="reader-main">
+          <Tooltip id="my-tooltip" style={{ zIndex: 25 }} />
+          {isSeparateElectronWindow && (
+            <div className="reader-window-drag-region" />
+          )}
 
-        <ReaderTopToolbar
-          isNearEdge={state.isNearEdge && !isUndockedPopupBoxOpen}
-          currentDuration={state.currentDuration}
-          isMacOS={isMacOS}
-          isMergeWord={isMergeWord}
-          isSeparateElectronWindow={isSeparateElectronWindow}
-          showQuickButtons={showQuickButtons}
-          hideQuickButtons={hideQuickButtons}
-          handleDialogButtonHover={handleDialogButtonHover}
-          handleAnnotationClick={handleAnnotationClick}
-        />
+          <div className="reader-legacy-controls" hidden>
+            <ReaderTopToolbar
+              isNearEdge={false}
+              currentDuration={state.currentDuration}
+              isMacOS={isMacOS}
+              isMergeWord={isMergeWord}
+              isSeparateElectronWindow={isSeparateElectronWindow}
+              showQuickButtons={keepLegacyControlsHidden}
+              hideQuickButtons={keepLegacyControlsHidden}
+              handleDialogButtonHover={handleDialogButtonHover}
+              handleAnnotationClick={handleAnnotationClick}
+            />
 
-        <ReaderBottomToolbar
-          isNearEdge={state.isNearEdge && !isUndockedPopupBoxOpen}
-          showQuickButtons={showQuickButtons}
-          hideQuickButtons={hideQuickButtons}
-        />
+            <ReaderBottomToolbar
+              isNearEdge={false}
+              showQuickButtons={keepLegacyControlsHidden}
+              hideQuickButtons={keepLegacyControlsHidden}
+            />
 
-        {isSettingOpen && (
-          <>
-            <SettingDialog />
-            <div className="drag-background"></div>
-          </>
-        )}
-        <Toaster
-          toastOptions={{
-            style: {
-              padding: "8px 10px",
-              wordWrap: "break-word",
-              wordBreak: "break-word",
-              whiteSpace: "normal",
-              overflowWrap: "break-word",
-            },
-          }}
-        />
+            {/* Compatibility targets for navigation/search keyboard commands. */}
+            <div className="left-panel" onClick={() => handleEnterReader("left")} />
+            <div className="right-panel" onClick={() => handleEnterReader("right")} />
+          </div>
 
-        <div
-          className="left-panel"
-          onMouseEnter={() => handleEdgeMouseEnter("left")}
-          onMouseLeave={() => handleEdgeMouseLeave("left")}
-          style={state.hoverPanel === "left" ? { opacity: 0.5 } : {}}
-          onClick={() => {
-            handleEnterReader("left");
-          }}
-        >
-          <span className="icon-grid panel-icon"></span>
+          {isSettingOpen && (
+            <>
+              <SettingDialog />
+              <div className="drag-background"></div>
+            </>
+          )}
+          <Toaster
+            toastOptions={{
+              style: {
+                padding: "8px 10px",
+                wordWrap: "break-word",
+                wordBreak: "break-word",
+                whiteSpace: "normal",
+                overflowWrap: "break-word",
+              },
+            }}
+          />
+
+          {currentBook.key && <Viewer {...(renditionProps as any)} />}
+          <div className="reader-setting-dialog-anchor">
+            {(readerMode === "scroll" || readerMode === "single") && (
+              <KeepMounted open={isScaleOpen}>
+                <ScalePageDialog />
+              </KeepMounted>
+            )}
+            <KeepMounted open={isConvertOpen}>
+              <ConvertDialog />
+            </KeepMounted>
+            <KeepMounted open={isPdfCropOpen}>
+              <PdfCropDialog />
+            </KeepMounted>
+            <KeepMounted open={isStudyLangOpen}>
+              <StudyLangDialog />
+            </KeepMounted>
+            <KeepMounted open={isAssistReadOpen}>
+              <AssistReadDialog />
+            </KeepMounted>
+            <KeepMounted open={isSpeechOpen}>
+              <SpeechDialog />
+            </KeepMounted>
+          </div>
+          {isAnnotationOpen && <AnnotationDialog />}
+          <SupportDialog />
+          {isOpenPopupOptionDialog && (
+            <>
+              <PopupOptionDialog />
+              <div className="drag-background"></div>
+            </>
+          )}
         </div>
-        <div
-          className="right-panel"
-          onMouseEnter={() => handleEdgeMouseEnter("right")}
-          onMouseLeave={() => handleEdgeMouseLeave("right")}
-          style={
-            state.hoverPanel === "right"
-              ? {
-                  opacity: 0.5,
-                  right: isDockedRight ? "299px" : "0px",
-                }
-              : { right: isDockedRight ? "299px" : "0px" }
-          }
-          onClick={() => {
-            handleEnterReader("right");
-          }}
-        >
-          <span className="icon-grid panel-icon"></span>
-        </div>
-
         <div
           id="reader-settings-panel"
           className="setting-panel-container"
-          onMouseEnter={() => {
-            cancelLeaveReader("right");
+          style={{
+            backgroundColor: backgroundColor || undefined,
+            color: ConfigService.getReaderConfig("textColor") || undefined,
           }}
-          onMouseLeave={() => {
-            scheduleLeaveReader("right");
-          }}
-          style={
-            state.isOpenRightPanel
-              ? {}
-              : {
-                  transform: "translateX(309px)",
-                }
-          }
+          hidden={!state.isOpenRightPanel}
+          inert={!state.isOpenRightPanel}
         >
           <SettingPanel />
         </div>
         <div
           id="reader-navigation-panel"
           className="navigation-panel-container"
-          onMouseEnter={() => {
-            cancelLeaveReader("left");
+          style={{
+            backgroundColor: backgroundColor || undefined,
+            color: ConfigService.getReaderConfig("textColor") || undefined,
           }}
-          onMouseLeave={() => {
-            scheduleLeaveReader("left");
-          }}
-          style={
-            state.isOpenLeftPanel
-              ? {}
-              : {
-                  transform: "translateX(-309px)",
-                }
-          }
+          hidden={!state.isOpenLeftPanel}
+          inert={!state.isOpenLeftPanel}
         >
           <NavigationPanel
-            {...({
-              totalDuration: state.totalDuration,
-              isOpen: state.isOpenLeftPanel,
-            } as any)}
+            totalDuration={state.totalDuration}
+            isOpen={state.isOpenLeftPanel}
           />
         </div>
-
-        {currentBook.key && <Viewer {...(renditionProps as any)} />}
-        <div className="reader-setting-dialog-anchor">
-          {(readerMode === "scroll" || readerMode === "single") && (
-            <KeepMounted open={isScaleOpen}>
-              <ScalePageDialog />
-            </KeepMounted>
-          )}
-          <KeepMounted open={isConvertOpen}>
-            <ConvertDialog />
-          </KeepMounted>
-          <KeepMounted open={isPdfCropOpen}>
-            <PdfCropDialog />
-          </KeepMounted>
-          <KeepMounted open={isStudyLangOpen}>
-            <StudyLangDialog />
-          </KeepMounted>
-          <KeepMounted open={isAssistReadOpen}>
-            <AssistReadDialog />
-          </KeepMounted>
-          <KeepMounted open={isSpeechOpen}>
-            <SpeechDialog />
-          </KeepMounted>
-        </div>
-        {isAnnotationOpen && <AnnotationDialog />}
-        <SupportDialog />
-        {isOpenPopupOptionDialog && (
-          <>
-            <PopupOptionDialog />
-            <div className="drag-background"></div>
-          </>
-        )}
       </div>
       <ReaderSideToolbar
         isNavigationOpen={state.isOpenLeftPanel}

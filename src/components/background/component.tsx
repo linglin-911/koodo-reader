@@ -6,10 +6,16 @@ import BackgroundUtil from "../../utils/file/backgroundUtil";
 import { useAppStore } from "../../store/useAppStore";
 import { useLatest } from "../../utils/hooks/useLatest";
 
-const Background = () => {
+interface BackgroundProps {
+  isPanelLayout?: boolean;
+}
+
+const Background = ({ isPanelLayout = false }: BackgroundProps) => {
   const readerMode = useAppStore((s) => s.reader.readerMode);
-  const isNavLocked = useAppStore((s) => s.reader.isNavLocked);
-  const isSettingLocked = useAppStore((s) => s.reader.isSettingLocked);
+  const storedNavLocked = useAppStore((s) => s.reader.isNavLocked);
+  const isNavLocked = isPanelLayout ? false : storedNavLocked;
+  const storedSettingLocked = useAppStore((s) => s.reader.isSettingLocked);
+  const isSettingLocked = isPanelLayout ? false : storedSettingLocked;
   const isDockedRight = useAppStore((s) => s.reader.isDockedRight);
   const backgroundColor = useAppStore((s) => s.reader.backgroundColor);
   const scale = useAppStore((s) => s.reader.scale);
@@ -74,9 +80,14 @@ const Background = () => {
         )
       );
     });
-    window.addEventListener("resize", resizeHandler);
+    const content = isPanelLayout ? document.querySelector(".reader-main") : null;
+    const observer = content ? new ResizeObserver(resizeHandler) : null;
+    if (content) observer!.observe(content);
+    else window.addEventListener("resize", resizeHandler);
     return () => {
+      observer?.disconnect();
       window.removeEventListener("resize", resizeHandler);
+      resizeHandler.cancel();
     };
   }, []);
 

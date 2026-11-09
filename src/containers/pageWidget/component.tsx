@@ -31,12 +31,18 @@ declare var window: any;
 
 type TransCache = Record<string, Record<string, string>>;
 
-const PageWidget = () => {
+interface PageWidgetProps {
+  isPanelLayout?: boolean;
+}
+
+const PageWidget = ({ isPanelLayout = false }: PageWidgetProps) => {
   const currentBook = useAppStore((s) => s.book.currentBook);
   const currentChapter = useAppStore((s) => s.reader.currentChapter);
   const readerMode = useAppStore((s) => s.reader.readerMode);
-  const isNavLocked = useAppStore((s) => s.reader.isNavLocked);
-  const isSettingLocked = useAppStore((s) => s.reader.isSettingLocked);
+  const storedNavLocked = useAppStore((s) => s.reader.isNavLocked);
+  const isNavLocked = isPanelLayout ? false : storedNavLocked;
+  const storedSettingLocked = useAppStore((s) => s.reader.isSettingLocked);
+  const isSettingLocked = isPanelLayout ? false : storedSettingLocked;
   const isDockedRight = useAppStore((s) => s.reader.isDockedRight);
   const backgroundColor = useAppStore((s) => s.reader.backgroundColor);
   const isHideFooter = useAppStore((s) => s.reader.isHideFooter);

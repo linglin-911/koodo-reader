@@ -42,6 +42,12 @@ app.whenReady().then(async () => {
   ipcMain.handle('custom-database-command', () => []);
   ipcMain.handle('reader-toolbar-book', () => book);
   ipcMain.handle('reader-toolbar-resize', (_event, width) => window.setContentSize(width, 850));
+  ipcMain.handle('reader-toolbar-preview', async (_event, kind) => {
+    await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+    const preview = path.join(temporary, kind === 'navigation' ? 'reader-navigation.png' : 'reader-settings.png');
+    fs.writeFileSync(preview, (await window.webContents.capturePage()).toPNG());
+    return preview;
+  });
   ipcMain.on('storage-location', event => { event.returnValue = storage; });
   server = await createServer({ root: path.resolve(__dirname, '..'), server: { port: 0, host: '127.0.0.1', warmup: { clientFiles: [] } }, plugins: [{ name: 'reader-toolbar-test', configureServer(vite) {
     vite.middlewares.use('/__reader_toolbar__/', async (_req, res) => {
