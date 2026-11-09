@@ -675,6 +675,11 @@ export const getPageWidth = (
 
     return limit;
   };
+  const clampGeometry = (width:number, offset:string) => {
+    const boundedWidth=findValidMultiple(Math.max(80,Math.min(availableWidth-8,width)));
+    const boundedOffset=Math.max(0,Math.min(availableWidth-boundedWidth,parseFloat(offset)||0));
+    return {pageOffset:`${boundedOffset}px`,pageWidth:`${boundedWidth}px`};
+  };
   if (isFitPage && (readerMode === "scroll" || readerMode === "single")) {
     // 固定左右侧边栏时，页面只在剩余可用区域内铺满，避免被侧边栏遮挡
     const panelWidth = 300;
@@ -684,10 +689,7 @@ export const getPageWidth = (
       (isNavLocked ? panelWidth : 0) -
       (isSettingLocked ? panelWidth : 0);
     let pageOffset = 50 + (isNavLocked ? panelWidth : 0) + "px";
-    return {
-      pageOffset,
-      pageWidth: pageWidth + "px",
-    };
+    return clampGeometry(pageWidth,pageOffset);
   }
 
   //缩放过高时按窗口宽度封顶
@@ -697,10 +699,7 @@ export const getPageWidth = (
   ) {
     let pageWidth = availableWidth - 106;
     let pageOffset = 50 + "px";
-    return {
-      pageOffset,
-      pageWidth: pageWidth + "px",
-    };
+    return clampGeometry(pageWidth,pageOffset);
   }
 
   let pageOffset = "";
@@ -713,9 +712,7 @@ export const getPageWidth = (
       (isNavLocked ? 300 : 0) -
       (isSettingLocked ? 300 : 0);
     let width = findValidMultiple(preWidth);
-    pageOffset = `calc(${availableWidth / 2}px + ${isNavLocked ? 150 : 0}px - ${
-      isSettingLocked ? 150 : 0
-    }px - ${width / 2}px)`;
+    pageOffset = String(availableWidth / 2 + (isNavLocked ? 150 : 0) - (isSettingLocked ? 150 : 0) - width / 2) + "px";
     pageWidth = width;
   } else if (readerMode === "double") {
     let width = findValidMultiple(
@@ -725,19 +722,14 @@ export const getPageWidth = (
         (isNavLocked ? 300 : 0) -
         (isSettingLocked ? 300 : 0)
     );
-    pageOffset = `calc(${availableWidth / 2}px + ${isNavLocked ? 150 : 0}px - ${
-      isSettingLocked ? 150 : 0
-    }px - ${width / 2}px)`;
+    pageOffset = String(availableWidth / 2 + (isNavLocked ? 150 : 0) - (isSettingLocked ? 150 : 0) - width / 2) + "px";
     pageWidth = width;
   }
   if (pageWidth > availableWidth) {
     pageWidth = availableWidth - 106;
     pageOffset = 50 + "px";
   }
-  return {
-    pageOffset,
-    pageWidth: pageWidth + "px",
-  };
+  return clampGeometry(pageWidth,pageOffset);
 };
 export const loadFontData = async () => {
   try {

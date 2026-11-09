@@ -24,7 +24,7 @@ export async function createSingleChapterPreview(book:Book,binding:AnnotationBin
   const store={sourceTicket:opened.store.sourceTicket,load:async()=>previewIndex,prepare:async()=>previewIndex,ensureBlocks:async()=>previewIndex,save:async()=>{throw Error("Preview index is read-only");},readDirectory:async()=>({generation:directory.generation,chapters:[{index:0,chapterId:chapter.chapterId,label:chapter.label}]}),readChapter:async()=>{throw Error("Preview requires bounded reads");},readChapterRange:(_chapter:unknown,offset:number,length:number)=>opened.store!.readChapterRange(chapter,offset,length),close:()=>opened.store!.close()};
   rendition=Kookit.BookHelper.getRendition(new ArrayBuffer(0),{format:"TXT",charset:opened.encoding,parserRegex:getParserRegex("TXT",book.key),txtIndexStore:store,readerMode:"scroll",txtContinuousScroll:true,animation:"none",isMobile:"no",platform:"electron"},Kookit) as PreviewRendition;
   await rendition.renderTo(element);if(signal.aborted)throw Error("Preview cancelled");
-  const doc=rendition.getDocument();doc.body.style.cssText+=";font-size:18px;line-height:1.8;margin:0;";
+  const doc=rendition.getDocument();doc.body.style.cssText+=";font-size:18px;line-height:1.8;margin:0;";doc.body.style.color=getComputedStyle(element).color;
   await rendition.goToChapterDocIndex(0);
   if(binding.kind==="small"){
    await rendition.goToPosition(JSON.stringify({chapterDocIndex:"0",txtWindow:{version:1,chapterId:chapter.chapterId,generation:directory.generation,offset:chapter.bodyStart-chapter.start+(binding.relative_start||0)}}));
