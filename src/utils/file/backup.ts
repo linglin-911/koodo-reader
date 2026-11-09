@@ -1,3 +1,5 @@
+import annotationBackupFormats from "../main/annotation-backup-formats.json";
+import { seedLegacyAnnotationTags } from "../storage/annotationService";
 import { AnnotationService } from "../storage/annotationService";
 import BookUtil from "./bookUtil";
 import { isElectron } from "react-device-detect";
@@ -118,7 +120,7 @@ export const generateSnapshot = async () => {
         });
       }
     }
-    entries.push({name:"config/annotations.v1.json",data:new TextEncoder().encode(JSON.stringify(await AnnotationService.export()))});
+    entries.push({name:`config/${annotationBackupFormats.current}`,data:new TextEncoder().encode(JSON.stringify(await AnnotationService.export()))});
     const configStr = JSON.stringify(await ConfigUtil.dumpConfig("config"));
     entries.push({
       name: "config/config.json",
@@ -191,6 +193,7 @@ export const backupFromPath = async (
     fs.mkdirSync(targetPath, { recursive: true });
   }
 
+  await seedLegacyAnnotationTags();
   await backupToConfigJson();
 
   let databaseList = CommonTool.databaseList;

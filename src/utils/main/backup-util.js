@@ -5,6 +5,7 @@ const yauzl = require("yauzl");
 
 // 备份：把 dataPath 下的指定目录/文件打包为 zip（.tmp 先写后原子改名）。
 // sendProgress(percent) 由调用方注入，用于向渲染进程转发进度。
+const annotationBackupFormats = require("./annotation-backup-formats.json");
 const backupToPath = async (config, sendProgress) => {
   if (!config || typeof config !== "object") {
     throw new TypeError("Invalid backup config");
@@ -109,7 +110,7 @@ const backupToPath = async (config, sendProgress) => {
       for (const entry of entries) {
         zip.addFile(entry.sourcePath, entry.entryZip);
       }
-      if (config.annotations) zip.addBuffer(Buffer.from(JSON.stringify(config.annotations),"utf8"),"config/annotations.v1.json");
+      if (config.annotations) zip.addBuffer(Buffer.from(JSON.stringify(config.annotations),"utf8"),`config/${config.annotations.version === 2 ? annotationBackupFormats.current : "annotations.v1.json"}`);
       zip.end();
       zip.outputStream.on("data", (chunk) => {
         writtenBytes += chunk.length;
@@ -199,7 +200,7 @@ const restoreFromPath = async (config, sendProgress) => {
     "snapshot/",
   ];
   const isConfigFile = (name) => {
-    if (name === "config/annotations.v1.json") return true;
+    if (/^config\/annotations\.v\d+\.json$/.test(name)) return true;
     if (!name.startsWith("config/")) return false;
     const rest = name.slice("config/".length);
     if (rest.includes("/")) return false;

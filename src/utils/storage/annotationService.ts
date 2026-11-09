@@ -1,6 +1,21 @@
 import { invokeMeasuredDatabaseCommand, DatabaseReadContext } from "./databaseDiagnostics";
 import { getStorageLocation } from "../common";
+import { ConfigService } from "../../assets/lib/kookit-extra-browser.min";
 export type AnnotationKind = "small" | "chapter" | "range";
+export interface AnnotationTag {
+  id: string;
+  name: string;
+  scope: "global" | "book";
+  book_key: string;
+  version: number;
+  useCount?: number;
+}
+export type TagRenameResult =
+  | { requiresMerge: true; source: AnnotationTag; target: AnnotationTag; affectedCount: number }
+  | { requiresMerge?: false; tag: AnnotationTag; merged: boolean; affectedCount?: number };
+export type TagDeleteResult =
+  | { requiresConfirmation: true; tag: AnnotationTag; affectedCount: number }
+  | { requiresConfirmation?: false; deleted: true; affectedCount: number };
 export interface ChapterSnapshot {
   chapterId: string;
   index: number;
@@ -44,6 +59,7 @@ export interface AnnotationEntity {
   title: string;
   notes: string;
   tag: string[];
+  tagRefs: AnnotationTag[];
   version: number;
   bindings: AnnotationBinding[];
   date: { year: number; month: number; day: number };
@@ -71,18 +87,53 @@ export interface BindingInput {
   chapter?: string;
   percentage?: string;
 }
-export const annotationCommand = <T = unknown>(
+const legacyTagInitialization = new Map<string, Promise<unknown>>();
+const invokeAnnotationCommand = <T = unknown>(
   action: string,
-  data: Record<string, unknown> = {},
-  context: DatabaseReadContext = {}
+  data: Record<string, unknown>,
+  context: DatabaseReadContext,
+  storagePath: string
 ): Promise<T> =>
   invokeMeasuredDatabaseCommand<T>((channel,command)=>window.electronAPI.invoke(channel,command), {
     operation: "annotations",
     dbName: "notes",
-    storagePath: getStorageLocation(),
+    storagePath,
     action,
     ...data,
   }, context);
+export const seedLegacyAnnotationTags = () => invokeAnnotationCommand(
+  "tag-seed-legacy", { names: ConfigService.getAllListConfig("noteTags") }, {}, getStorageLocation()
+);
+export const annotationCommand = async <T = unknown>(
+  action: string,
+  data: Record<string, unknown> = {},
+  context: DatabaseReadContext = {}
+): Promise<T> => {
+  const storagePath = getStorageLocation();
+  if (!legacyTagInitialization.has(storagePath)) {
+    const pending = invokeAnnotationCommand("tag-seed-legacy", {
+      names: ConfigService.getAllListConfig("noteTags"),
+    }, {}, storagePath).catch(error => { legacyTagInitialization.delete(storagePath); throw error; });
+    legacyTagInitialization.set(storagePath, pending);
+  }
+  await legacyTagInitialization.get(storagePath);
+  return invokeAnnotationCommand<T>(action, data, context, storagePath);
+};
+export const AnnotationTagService = {
+  list: (filter: {bookKey?: string; scope?: "global" | "book"; offset?: number; limit?: number} = {}) =>
+    annotationCommand<{records: AnnotationTag[]; hasMore: boolean}>("tag-list", filter),
+  create: (tag: {name: string; scope: "global" | "book"; bookKey?: string}) =>
+    annotationCommand<AnnotationTag>("tag-create", tag),
+  rename: (tag: AnnotationTag, name: string, mergeTarget?: AnnotationTag) =>
+    annotationCommand<TagRenameResult>("tag-rename", {
+      id: tag.id, bookKey: tag.book_key, version: tag.version, name,
+      ...(mergeTarget ? {confirmMerge: true, targetId: mergeTarget.id, targetVersion: mergeTarget.version} : {}),
+    }),
+  delete: (tag: AnnotationTag, confirmed = false) =>
+    annotationCommand<TagDeleteResult>("tag-delete", {
+      id: tag.id, bookKey: tag.book_key, version: tag.version, confirmed,
+    }),
+};
 export interface AnnotationWindowBlock { chapterIndex:number; chapterId:string; start:number; end:number; }
 export interface ReadingAnnotation { key:string;entityKey:string;bindingId:string;color:string;hasNote:boolean;notes:string;chapterIndex:number;txtAnchor?:{start:number;end:number}; }
 export interface RecoveryResults {
@@ -95,7 +146,7 @@ export const AnnotationService = {
   recoveryResults: (bookKey:string,offset=0) => annotationCommand<RecoveryResults>("recovery-results",{bookKey,offset,limit:50}),
   readingWindow: (data: {bookKey:string;format:"TXT";sourceTicket?:string;blocks:AnnotationWindowBlock[];offset:number;afterId?:string}, context:DatabaseReadContext={}) =>
     annotationCommand<{records:ReadingAnnotation[];related:unknown[];hasMore:boolean;nextCursor?:string}>("reading-window",{...data,limit:200},context),
-  create: (note:{bookKey:string;kind:AnnotationKind;notes:string;tag:string[];title?:string},binding:BindingInput) =>
+  create: (note:{bookKey:string;kind:AnnotationKind;notes:string;tag?:string[];tagIds?:string[];title?:string},binding:BindingInput) =>
     annotationCommand<AnnotationEntity>("create",{note,binding}),
   list: (filter: Record<string, unknown> = {}) =>
     annotationCommand<{ records: AnnotationEntity[]; hasMore: boolean }>(
@@ -109,7 +160,8 @@ export const AnnotationService = {
       bookKey: string;
       kind: AnnotationKind;
       notes: string;
-      tag: string[];
+      tag?: string[];
+      tagIds?: string[];
     }
   ) => annotationCommand<AnnotationEntity>("save", { note }),
   bind: (noteKey: string, binding: BindingInput, replace?: AnnotationBinding) =>

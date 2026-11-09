@@ -1,3 +1,6 @@
+import { findAnnotationManifest, parseAnnotationManifest } from "../storage/annotationBackup";
+import annotationBackupFormats from "../main/annotation-backup-formats.json";
+import { seedLegacyAnnotationTags } from "../storage/annotationService";
 import { AnnotationService } from "../storage/annotationService";
 import { generateSyncRecord, getStorageLocation } from "../common";
 import { getCloudConfig, upgradeConfig, upgradeStorage } from "./common";
@@ -126,6 +129,10 @@ export const restoreFromBrowser = async (): Promise<
         const configFiles = Object.keys(zip.files).filter(
           (name) => name.startsWith("config/") && !zip.files[name].dir
         );
+        // Prefer the newest present manifest. A corrupt v2 must fail, never
+        // silently fall back to a lossy v1/database copy.
+        const annotationManifestName = findAnnotationManifest(configFiles.map(name => name.split("/").pop() || ""));
+        const annotationManifest = annotationManifestName ? `config/${annotationManifestName}` : undefined;
         for (const fileName of configFiles) {
           try {
             const entryName = fileName.split("/").pop() || "";
@@ -137,6 +144,7 @@ export const restoreFromBrowser = async (): Promise<
               }
               const config = JSON.parse(text);
               for (const key in config) {
+                if (key === "storageLocation") continue;
                 if (typeof config[key] !== "string") {
                   console.warn("Skipping non-string config value:", key);
                   continue;
@@ -150,10 +158,10 @@ export const restoreFromBrowser = async (): Promise<
                 break;
               }
               ConfigService.setItem("syncRecord", text);
-            } else if (entryName === "annotations.v1.json" && isElectron) {
+            } else if (annotationBackupFormats.supported.includes(entryName) && isElectron) {
               // Applied below after legacy config/database entries.
             } else if (entryName === "notes.db" && isElectron) {
-              if (!zip.file("config/annotations.v1.json"))
+              if (!annotationManifest)
                 await AnnotationService.importDatabase(await zip.file(fileName)!.async("arraybuffer"));
             } else if (entryName.endsWith(".db")) {
               const buf: ArrayBuffer = await zip
@@ -172,9 +180,13 @@ export const restoreFromBrowser = async (): Promise<
             break;
           }
         }
-        if(!failed && isElectron && zip.file("config/annotations.v1.json")) {
-          try { await AnnotationService.import(JSON.parse(await zip.file("config/annotations.v1.json")!.async("string"))); }
-          catch { failed=true; }
+        if (!failed && isElectron) {
+          try {
+            if (annotationManifest)
+              await AnnotationService.import(parseAnnotationManifest(annotationManifestName!, await zip.file(annotationManifest)!.async("string")));
+            if (!annotationManifest || annotationManifest.endsWith("annotations.v1.json"))
+              await seedLegacyAnnotationTags();
+          } catch { failed = true; }
         }
         if (failed) {
           resolve("failed");
@@ -300,6 +312,9 @@ export const restoreFromSnapshot = async (fileName: string) => {
     const zip = await JSZip.loadAsync(
       new Uint8Array(fs.readFileSync(filePath))
     );
+    const annotationManifest = findAnnotationManifest(Object.keys(zip.files)
+      .filter(name => name.startsWith("config/") && !zip.files[name].dir)
+      .map(name => name.split("/").pop() || ""));
     const databaseList = CommonTool.databaseList;
     for (let i = 0; i < databaseList.length; i++) {
       await window.electronAPI.invoke("close-database", {
@@ -310,6 +325,12 @@ export const restoreFromSnapshot = async (fileName: string) => {
       const entry = zip.file(entryName);
       const data = entry ? await entry.async("uint8array") : null;
       if (!data) continue;
+      if (databaseList[i] === "notes") {
+        // Snapshot restoration must merge formal data, never unlink notes.db.
+        if (!annotationManifest)
+          await AnnotationService.importDatabase(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
+        continue;
+      }
       const destination = path.join(
         dataPath,
         "config",
@@ -326,16 +347,19 @@ export const restoreFromSnapshot = async (fileName: string) => {
     if (configData) {
       try {
         const config = JSON.parse(new TextDecoder().decode(configData));
-        for (const key in config) ConfigService.setItem(key, config[key]);
+        for (const key in config) if (key !== "storageLocation") ConfigService.setItem(key, config[key]);
       } catch (error) {
         console.error("restore config error:", error);
       }
     }
+    if (annotationManifest)
+      await AnnotationService.import(parseAnnotationManifest(annotationManifest, await zip.file(`config/${annotationManifest}`)!.async("string")));
+    if (!annotationManifest || annotationManifest === "annotations.v1.json") await seedLegacyAnnotationTags();
     await generateSyncRecord();
     return true;
   } catch (error) {
     console.error("restore snapshot error:", error);
-    toast.error(error instanceof Error ? error.message : String(error), {
+    toast.error(i18n.t("Restore failed"), {
       id: "restore-snapshot",
     });
     return false;
@@ -395,6 +419,11 @@ export const restoreFromfilePath = async (filePath: string) => {
   // 主进程已流式写盘资产文件，并回传 config 类文件 Buffer，在此处理。
   const configFiles: { name: string; buffer: ArrayBuffer }[] =
     result.configFiles || [];
+  let annotationManifest: (typeof configFiles)[number] | undefined;
+  try {
+    const name = findAnnotationManifest(configFiles.map(entry => path.basename(entry.name)));
+    annotationManifest = configFiles.find(entry => path.basename(entry.name) === name);
+  } catch { return false; }
   let failed = false;
   for (const file of configFiles) {
     try {
@@ -407,6 +436,7 @@ export const restoreFromfilePath = async (filePath: string) => {
         }
         const config = JSON.parse(text);
         for (const key in config) {
+          if (key === "storageLocation") continue;
           if (typeof config[key] !== "string") {
             console.warn("Skipping non-string config value:", key);
             continue;
@@ -420,10 +450,10 @@ export const restoreFromfilePath = async (filePath: string) => {
           break;
         }
         ConfigService.setItem("syncRecord", text);
-      } else if (entryName === "annotations.v1.json") {
+      } else if (annotationBackupFormats.supported.includes(entryName)) {
         // Import after all other configuration files, preserving the formal schema.
       } else if (entryName === "notes.db") {
-        if (!configFiles.some(entry=>path.basename(entry.name)==="annotations.v1.json"))
+        if (!annotationManifest)
           await AnnotationService.importDatabase(file.buffer);
       } else if (entryName.endsWith(".db")) {
         const sqlUtil = new SqlUtil();
@@ -437,8 +467,12 @@ export const restoreFromfilePath = async (filePath: string) => {
     }
   }
   if (!failed) {
-    const manifest=configFiles.find(entry=>path.basename(entry.name)==="annotations.v1.json");
-    if(manifest){try{await AnnotationService.import(JSON.parse(new TextDecoder().decode(manifest.buffer)));}catch{failed=true;}}
+    try {
+      if (annotationManifest)
+        await AnnotationService.import(parseAnnotationManifest(path.basename(annotationManifest.name), new TextDecoder().decode(annotationManifest.buffer)));
+      if (!annotationManifest || path.basename(annotationManifest.name) === "annotations.v1.json")
+        await seedLegacyAnnotationTags();
+    } catch { failed = true; }
   }
   return !failed;
 };

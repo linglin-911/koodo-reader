@@ -133,6 +133,7 @@
       "main.js",
       "src/utils/main/**/*.js",
       "src/utils/main/**/*.cjs",
+      "src/utils/main/annotation-backup-formats.json",
       "preload.js",
       "chat-preload.js"
     ],

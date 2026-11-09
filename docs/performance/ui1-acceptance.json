@@ -1,0 +1,216 @@
+{
+  "stage": "UI-1",
+  "date": "2026-11-09",
+  "baseCommit": "0b1c7be2",
+  "branch": "diagnostics/phase1-logging",
+  "synthetic": true,
+  "userDatabaseOpened": false,
+  "runtime": {
+    "electron": "35.7.5",
+    "node": "22.16.0",
+    "cpu": "AMD Ryzen 7 5800H with Radeon Graphics         "
+  },
+  "checks": {
+    "typecheck": true,
+    "productionBuild": true,
+    "vitest": {
+      "passed": true,
+      "cases": 16
+    },
+    "nodeDiagnosticsAndReconcile": {
+      "passed": true,
+      "cases": 18
+    }
+  },
+  "results": {
+    "tags": {
+      "passed": true,
+      "cases": 28,
+      "checks": [
+        "v1 formal migration preserves exact entities, versions, drawing/index/unrelated tables and makes a consistent pre-v2 backup",
+        "failed additive migration rolls back DDL and formal rows; fixing the fault permits an idempotent retry",
+        "unused legacy configuration names seed globals once by stable identity without modifying formal notes",
+        "equal names in global/two book scopes retain three distinct identities and book-isolated selection",
+        "cross-book, missing IDs, invalid scope/page and empty new names fail without publishing notes or tag rows",
+        "selected-text creation failure rolls back new global identities and references together with the entity",
+        "failed tag assignment rolls back body/version and the prior reference set atomically",
+        "all three kinds share optional tags; usage counts distinct entities rather than location bindings",
+        "legacy body/name editors preserve local identity and same-name scopes; explicit IDs can remove a local reference",
+        "local rename updates all three projections/versions and preserves body/title/bindings; stale editors cannot undo it",
+        "rename collision returns a no-write merge preview with deduplicated affected count",
+        "concurrent target membership invalidates merge confirmation without partial changes",
+        "merge failure after relation changes rolls the entire tag/note transaction back",
+        "confirmed merge deduplicates shared references, removes only source identity and preserves each entity",
+        "delete preview and cancellation are no-write; stale usage confirmation is rejected",
+        "delete failure rolls back; confirmed delete affects only tag links across all kinds and protects stale note saves",
+        "legacy global-name removal cannot remove a same-name local tag or its identity",
+        "tag lists stay paged with an index-backed relation count and identity filters",
+        "v2 backup roundtrip preserves IDs/scopes, same-name identities, unused tags and relation positions and is repeatable",
+        "v2 restore merges compatible preseeded globals without changing local identity or breaking retries",
+        "v1 manifest and readonly database import keep formal content and convert names to stable global references",
+        "v2 database-only restore carries scoped identities with the formal schema",
+        "invalid/cross-book/duplicate/projection-mismatched/future manifests never partially import",
+        "renamed tag or identical display names with different local IDs cause an atomic restore conflict",
+        "restore injected after tag insertion rolls back entities, identities and relations together",
+        "normal ZIP paths write/read both manifest generations and preserve v2 scoped tags",
+        "10000-entity migration pages only names and keeps tagged summary and usage queries bounded",
+        "packaged ASAR loads scoped service and shared manifest names; JSON is explicitly included in release files"
+      ],
+      "timings": {
+        "migration10000Ms": 758.9368999999997,
+        "taggedSummary10000Ms": {
+          "p50": 6.924699999999575,
+          "p95": 10.021600000000035,
+          "max": 20.35609999999997
+        },
+        "usageCatalog10000Ms": {
+          "p50": 2.1787999999996828,
+          "p95": 5.115799999999581,
+          "max": 5.2521999999999025
+        }
+      },
+      "userDatabaseOpened": false,
+      "nativeSqlite": true,
+      "schemaVersion": 2
+    },
+    "backupUI": {
+      "passed": true,
+      "cases": 11,
+      "checks": [
+        "renderer service seeds unused configuration and preserves same-name global/local references",
+        "snapshot writer emits the v2 manifest including unused/scoped tags",
+        "normal backup writer uses v2 and path restoration preserves scoped identities",
+        "snapshot restoration merges v2 through the formal service instead of replacing notes.db",
+        "snapshot cannot overwrite a newer formal body or silently discard its tag references",
+        "browser ZIP restoration prefers v2 and retains the destination library",
+        "v1 archive fallback imports formal notes and unused configuration tags",
+        "when both manifests exist v2 is authoritative",
+        "corrupt v2 never falls back to v1 or notes.db in streamed or browser restoration",
+        "future and mislabeled manifest versions fail without publishing formal data",
+        "database-only snapshot fallback preserves scoped references and leaves source library unchanged"
+      ],
+      "userDatabaseOpened": false,
+      "rendererErrors": []
+    },
+    "store": {
+      "passed": true,
+      "cases": 21,
+      "userDatabaseOpened": false,
+      "nativeSqlite": true
+    },
+    "reader": {
+      "passed": true,
+      "cases": 18,
+      "strictMode": true,
+      "normalCompiledEngine": true,
+      "originalSelectionMenuAndPopup": true,
+      "userDatabaseOpened": false,
+      "rendererErrors": []
+    },
+    "recovery": {
+      "passed": true,
+      "cases": 21,
+      "checks": [
+        "unannotated source rebuild performs one Worker scan, complete SHA-256 and metadata-only hot open",
+        "small, chapter and complete range recover atomically after insertion and preserve entity bodies/styles",
+        "renamed chapters recover only via both unique strong features plus an existing excerpt",
+        "deleted quote becomes invalid without overwriting original snapshot, quote or body",
+        "duplicate title and indistinguishable quotes stay pending, with no arbitrary chapter-index recovery",
+        "duplicate excerpts with unique exact context recover the correct new offset",
+        "reordered range endpoints and a missing endpoint never partially activate a range",
+        "unbound bindings are excluded; old referenced generations survive repeated cache GC",
+        "manual replacement while scanning wins binding epoch comparison and is never overwritten",
+        "entity edits during scanning are preserved while unchanged binding versions may recover",
+        "recovery SQL failure rolls back the index pointer, all binding updates and result rows",
+        "last-consumer close during candidate streaming cancels before publication and preserves old snapshots",
+        "source changes and active-generation CAS loss during recovery fail without binding writes",
+        "result pagination is bounded, stale versions disappear, backup retains recovered and pending snapshots",
+        "UTF-8/UTF-16LE/UTF-16BE BOM and GBK source changes preserve exact normalized quote offsets",
+        "100MiB giant candidate is streamed once in bounded decoded chunks and restores a deep emoji quote",
+        "additive recovery migration failure preserves existing formal rows and supports safe retry",
+        "relocation cannot silently override an available library original with a different selected file",
+        "relative offsets disambiguate duplicate context only under complete unchanged-source SHA-256 proof",
+        "unchanged-source proof preserves untitled fixed-chunk bindings without trusting generated chapter labels",
+        "TXT rebuilding never changes an existing non-TXT binding or its formal body"
+      ],
+      "userDatabaseOpened": false,
+      "nativeSqlite": true,
+      "liveWorkers": 0,
+      "annotationSchema": 2,
+      "indexSchema": 1,
+      "recoverySchema": 1
+    },
+    "stressSafety": {
+      "passed": true,
+      "synthetic": true,
+      "userDatabaseOpened": false,
+      "sourceBytes": 4194338,
+      "entities": 10000,
+      "smallEntities": 9998,
+      "chapterEntities": 1,
+      "rangeEntities": 1,
+      "smallBindings": 99980,
+      "bindings": 99982,
+      "multiplier": 10,
+      "distribution": "10-percent-hot-and-scattered",
+      "longBodyCharacters": 1310720,
+      "checks": [
+        "cursor pagination equals SQL oracle without duplicates, preserves offset callers and rejects invalid cursors",
+        "10000 entities / 99982 bindings: API unlink preserves formal body and all sibling locations",
+        "large source-change recovery has zero wrong bindings and zero lost bodies/quotes/styles",
+        "large versioned backup round-trips complete formal bodies, all three binding kinds and unbound snapshots",
+        "repeated 100k-binding import is idempotent; conflicting/newer formal body never overwrites",
+        "failed large import after entity writes rolls back every new entity and binding",
+        "additive query-index failure preserves formal rows, and a new connection retries safely",
+        "formal schema reopens idempotently without changing entity contents and passes integrity checks"
+      ],
+      "timings": {
+        "cursor pagination equals SQL oracle without duplicates, preserves offset callers and rejects invalid cursors": 583.1863999999996,
+        "10000 entities / 99982 bindings: API unlink preserves formal body and all sibling locations": 121.1214,
+        "publishFullSnapshotReads": 0,
+        "transactionPrepareCalls": 86,
+        "recoveryDiagnostics": {
+          "batchCommitMs": 8385.144200000002,
+          "recoveryCandidateChapters": 7700,
+          "recoveryBindings": 99981,
+          "recoveredBindings": 99981,
+          "pendingBindings": 0,
+          "invalidBindings": 0,
+          "recoveryConflicts": 0,
+          "workerScans": 1,
+          "scannedBytes": 4194338,
+          "maximumBatchRows": 128,
+          "fullSourceHashBytes": 4194338
+        },
+        "large source-change recovery has zero wrong bindings and zero lost bodies/quotes/styles": 54053.0276,
+        "large versioned backup round-trips complete formal bodies, all three binding kinds and unbound snapshots": 13457.776800000007,
+        "repeated 100k-binding import is idempotent; conflicting/newer formal body never overwrites": 14296.778000000006,
+        "failed large import after entity writes rolls back every new entity and binding": 13565.64899999999,
+        "additive query-index failure preserves formal rows, and a new connection retries safely": 755.5935999999929,
+        "formal schema reopens idempotently without changing entity contents and passes integrity checks": 2773.541799999992
+      },
+      "dataLossCount": 0,
+      "wrongAutoBindings": 0,
+      "runtime": {
+        "electron": "35.7.5",
+        "node": "22.16.0",
+        "cpu": "AMD Ryzen 7 5800H with Radeon Graphics         "
+      }
+    }
+  },
+  "sourceSHA256": {
+    "package.json": "01fb47ba771fb33cf2f06bc8b0646039a2377aa3ee19002d4a2885f1d4839a14",
+    "src/utils/main/annotation-store.js": "041e06de56c45134806cd50aafe48a361439bafb85889a2c4e031f7811bfcd84",
+    "src/utils/main/annotation-tags.js": "699033b2bf9626d194ebb675438f7d2c033a36d64064c141df5f3eaed2c64d5f",
+    "src/utils/main/annotation-backup-formats.json": "3e342eafd872bcb55d1c6de5e272f2d28f135203d8d0f6da1d587832b9afe540",
+    "src/utils/main/backup-util.js": "96a0734043399495106c82a8f09775eae7099c881f4380395c6c558eeb1f5ed2",
+    "src/utils/storage/annotationService.ts": "b0d2a26c7b1fe057db76efef67437b7e6d63b40ab4a0a58300ce99bf4a4abcf8",
+    "src/utils/storage/annotationBackup.ts": "be59e38c935e82dfd6a26677e5cf8e129ac6e5ab155fc4f4488c21ef5253dbac",
+    "src/utils/file/backup.ts": "578cf60842603c973a8adaf3746f17846deaaeb2673ab5a5fdb53aec25f65f4f",
+    "src/utils/file/restore.ts": "48103baeb57bd8f26e0b1b31dd76ecb900e4910ed7f23104e64f635bbfbbbe33",
+    "test/annotation-tags.electron.cjs": "8b375af9db2a10ec5eadf427d07db4ab5a3bb29591fb6a271762b3e84c5ce2a6",
+    "test/annotation-tags-ui.electron.cjs": "3a2c54064a0fc028dd23e1b72c9b438f03837a252c52244b71170af595e114ba",
+    "test/fixtures/annotation-tags-ui.js": "c6a2b7b612caca7ade1940cb46dd5c18d14e487853b75c0e92cf2266fbf2a2a3",
+    "test/helpers/phase11-fixtures.cjs": "4a472092195dfdeea8095ea0a334e31718174c0757621be150d8c7a8ea0ada69"
+  }
+}
