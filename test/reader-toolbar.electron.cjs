@@ -42,6 +42,29 @@ app.whenReady().then(async () => {
   ipcMain.handle('custom-database-command', () => []);
   ipcMain.handle('reader-toolbar-book', () => book);
   ipcMain.handle('reader-toolbar-resize', (_event, width) => window.setContentSize(width, 850));
+  const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+  ipcMain.handle('reader-toolbar-click', async (_event, { x, y, count }) => {
+    window.webContents.sendInputEvent({ type: 'mouseMove', x, y });
+    for (let clickCount = 1; clickCount <= count; clickCount++) {
+      window.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount });
+      window.webContents.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount });
+      await pause(35);
+    }
+  });
+  ipcMain.handle('reader-toolbar-drag', async (_event, { x, y, endX }) => {
+    window.webContents.sendInputEvent({ type: 'mouseMove', x, y });
+    window.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+    for (let step = 1; step <= 8; step++) {
+      window.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round(x + (endX - x) * step / 8), y, button: 'left' });
+      await pause(25);
+    }
+    window.webContents.sendInputEvent({ type: 'mouseUp', x: endX, y, button: 'left', clickCount: 1 });
+  });
+  ipcMain.handle('reader-toolbar-wheel', async (_event, { x, y }) => {
+    window.webContents.sendInputEvent({ type: 'mouseMove', x, y });
+    window.webContents.sendInputEvent({ type: 'mouseWheel', x, y, deltaY: -350, deltaX: 0, canScroll: true, hasPreciseScrollingDeltas: false });
+    await pause(250);
+  });
   ipcMain.handle('reader-toolbar-preview', async (_event, kind) => {
     await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
     const preview = path.join(temporary, kind === 'navigation' ? 'reader-navigation.png' : 'reader-settings.png');

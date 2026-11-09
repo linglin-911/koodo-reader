@@ -942,6 +942,9 @@ const Viewer = (props: ViewerProps) => {
       }, 1000);
       return false;
     });
+    // The initial goToPosition above can render before this listener is installed.
+    // Bind the first document now; later renders reuse the WeakSet guard.
+    handleBindGesture();
     // TXT 全书章节目录已由 Kookit 在 renderTo() 阶段通过轻量索引完整建立。
     // 不再延迟调用 refreshContent()，避免首屏后重新生成全书 HTML 和 DOM。
   };
@@ -967,6 +970,11 @@ const Viewer = (props: ViewerProps) => {
       const controller = rendition?.format === "TXT" ? new AbortController() : undefined;
       rendition?.addCleanup?.(() => { controller?.abort(); gestureBoundDocs.delete(doc); });
       const listenerOptions = controller ? { signal: controller.signal } : undefined;
+      // Cancel Chromium's word/line selection on repeated clicks. A normal
+      // single-press drag still uses native text selection for annotation ranges.
+      doc.addEventListener("mousedown", (event) => {
+        if (event.button === 0 && event.detail > 1) event.preventDefault();
+      }, { ...listenerOptions, capture: true });
       doc.addEventListener("click", () => {
         propsRef.current.handleLeaveReader("left");
         propsRef.current.handleLeaveReader("right");

@@ -23,8 +23,8 @@
   height: 100%;
   overflow: hidden;
 }
-/* Preserve shortcut targets while hiding all former hover controls. */
-.reader-legacy-controls {
+/* Command targets used by the directory/search entry points have no visible UI. */
+.reader-panel-command-targets {
   display: none;
 }
 .reader-workspace > .navigation-panel-container[hidden],
@@ -120,14 +120,19 @@
 }
 .reader-workspace > .setting-panel-container,
 .reader-workspace > .navigation-panel-container {
-  position: relative;
-  flex: 0 0 299px;
+  /* Only annotation workspaces split the page; navigation/settings float above it. */
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
   width: 299px;
+  max-width: 100%;
   height: 100%;
   min-height: 0;
   border-left: 1px solid color-mix(in srgb, currentColor 12%, transparent);
   box-sizing: content-box;
   z-index: 15;
+  box-shadow: -6px 0 20px rgb(0 0 0 / 8%);
 }
 .reader-workspace > .navigation-panel-container .navigation-header {
   position: absolute;

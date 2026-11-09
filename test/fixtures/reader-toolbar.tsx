@@ -46,6 +46,7 @@ export async function run() {
   assert(Math.abs(toolbar.getBoundingClientRect().width - 52) < 1 && Math.abs(workspace.getBoundingClientRect().right - toolbar.getBoundingClientRect().left) < 1, 'Toolbar overlaps workspace');
   cases++;
   await wait(() => !!useAppStore.getState().reader.htmlBook?.rendition?.getDocument()?.querySelector('[data-txt-start]'), 'Actual Reader TXT did not render');
+  await wait(() => useAppStore.getState().book.isReading, 'Actual Reader did not finish first-document initialization');
   const rendition = () => useAppStore.getState().reader.htmlBook!.rendition;
   assert(rendition().isTxtWindowActive(), 'Continuous TXT mode was lost');
   const area = document.getElementById('page-area')!;
@@ -58,6 +59,37 @@ export async function run() {
   const fit = getPageWidth('scroll', '1', 40, false, false, true);
   assert(parseFloat(fit.pageWidth) === workspace.clientWidth - 106, 'Fit-page width includes toolbar');
   assert(area.getBoundingClientRect().right < toolbar.getBoundingClientRect().left, 'Actual page intrudes into toolbar');
+  cases++;
+  // Native Chromium inputs verify browser selection defaults, not synthetic events.
+  const delayNative = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  const nativePoint = (start: number, end: number) => {
+    const doc = rendition().getDocument()!;
+    const node = doc.querySelector('[data-txt-start]')!.firstChild!;
+    const range = doc.createRange(); range.setStart(node, start); range.setEnd(node, end);
+    const rect = range.getBoundingClientRect(), frame = rendition().getIframe()!.getBoundingClientRect();
+    return { x: Math.round(frame.left + rect.left + 1), y: Math.round(frame.top + rect.top + rect.height / 2), right: Math.round(frame.left + rect.right - 1) };
+  };
+  const point = nativePoint(2, 3);
+  for (const count of [2, 3]) {
+    rendition().getDocument()!.getSelection()!.removeAllRanges();
+    await window.electronAPI.invoke('reader-toolbar-click', { x: point.x, y: point.y, count });
+    await delayNative(60);
+    assert(!rendition().getDocument()!.getSelection()!.toString(), `Native ${count}-click still selected words/lines`);
+  }
+  cases++;
+  const dragPoint = nativePoint(0, 8);
+  await window.electronAPI.invoke('reader-toolbar-drag', { x: dragPoint.x, y: dragPoint.y, endX: dragPoint.right });
+  await wait(() => !!rendition().getDocument()!.getSelection()!.toString(), 'Single-press native drag selection stopped working');
+  rendition().getDocument()!.getSelection()!.removeAllRanges();
+  useAppStore.getState().handleOpenMenu(false);
+  cases++;
+  const scrollBefore = area.scrollTop;
+  assert(getComputedStyle(area).scrollbarWidth === 'none' && getComputedStyle(area, '::-webkit-scrollbar').display === 'none', 'Reading scrollbar is still exposed');
+  await window.electronAPI.invoke('reader-toolbar-wheel', { x: point.x, y: point.y });
+  await wait(() => area.scrollTop > scrollBefore + 10, 'Hiding the scrollbar disabled native wheel scrolling');
+  assert(getComputedStyle(area).scrollbarWidth === 'none', 'Hovering the reading text reveals the scrollbar');
+  await rendition().goToChapterDocIndex(0);
+  await delayNative(200);
   cases++;
   const stableRendition = rendition();
   const stableFrame = stableRendition.getIframe();
@@ -76,26 +108,25 @@ export async function run() {
   // Hovering either edge must never expose the former controls or open panels.
   document.dispatchEvent(new MouseEvent('mousemove', { clientX: window.innerWidth - 70, clientY: 10, bubbles: true }));
   await delay(700);
-  for (const control of document.querySelectorAll<HTMLElement>('.reader-legacy-controls .reader-setting-icon-container, .reader-legacy-controls .reader-bottom-toolbar')) {
-    assert(control.getClientRects().length === 0, 'Former hover controls remain visible');
-  }
+  assert(!document.querySelector('.reader-toolbar-bookmark, .reader-quick-buttons, .reader-bottom-toolbar'), 'Former hover toolbars remain mounted');
   assert(navigation.hidden && settings.hidden && !document.querySelector('.quick-buttons-shown'), 'Hover opened a panel or hid chapter headers');
-  const bookmarkButton = document.querySelector<HTMLElement>('.reader-toolbar-bookmark');
-  assert(!!bookmarkButton, 'Hidden bookmark shortcut target was removed');
-  bookmarkButton!.click();
-  await wait(() => useAppStore.getState().viewArea.isShowBookmark, 'Hidden bookmark shortcut target did not save a bookmark');
   cases++;
 
   buttons[0].click();
-  await wait(() => !navigation.hidden && main.clientWidth < mainWidth, 'Directory button did not open right column');
-  assert(navigation.parentElement === main.parentElement, 'Directory is not a sibling column');
-  assert(Math.abs(navigation.getBoundingClientRect().left - main.getBoundingClientRect().right) < 1 && Math.abs(navigation.getBoundingClientRect().right - toolbar.getBoundingClientRect().left) < 1, 'Directory is not beside the toolbar on the right');
+  await wait(() => !navigation.hidden && main.clientWidth === mainWidth, 'Directory button changed reading width');
+  const pageBefore = area.getBoundingClientRect();
+  const assertOverlay = (panel: HTMLElement) => {
+    assert(getComputedStyle(panel).position === 'absolute' && panel.getBoundingClientRect().left < main.getBoundingClientRect().right && Math.abs(panel.getBoundingClientRect().right - toolbar.getBoundingClientRect().left) < 1, 'Panel does not float above the right side of the reading workspace');
+    assert(main.clientWidth === mainWidth && Math.abs(area.getBoundingClientRect().width - pageBefore.width) < 1 && Math.abs(area.getBoundingClientRect().left - pageBefore.left) < 1, 'Floating panel resized or shifted the actual reading page');
+  };
+  assertOverlay(navigation);
   // Old pinned preferences must not double-reserve columns or prevent outside dismissal.
   flushSync(() => useAppStore.setState(state => ({ reader: { ...state.reader, isNavLocked: true, isSettingLocked: true } })));
   navigation.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: main }));
   main.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
   await delay(700);
   assert(!navigation.hidden, 'Directory closes when the mouse leaves');
+  assertOverlay(navigation);
   navigation.querySelector<HTMLElement>('.book-title')!.click();
   await delay(30);
   assert(!navigation.hidden, 'Clicking within directory dismissed it');
@@ -105,14 +136,14 @@ export async function run() {
   cases++;
 
   buttons[2].click();
-  await wait(() => !settings.hidden && main.clientWidth < mainWidth, 'Settings button did not open right column');
+  await wait(() => !settings.hidden && main.clientWidth === mainWidth, 'Settings button changed reading width');
   settings.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: main }));
   await delay(700);
   assert(!settings.hidden, 'Settings closes when the mouse leaves');
   settings.querySelector<HTMLElement>('.setting-panel-title')!.click();
   await delay(30);
   assert(!settings.hidden, 'Clicking within settings dismissed it');
-  assert(settings.parentElement === main.parentElement && Math.abs(settings.getBoundingClientRect().left - main.getBoundingClientRect().right) < 1, 'Settings overlays the reading column');
+  assertOverlay(settings);
   await window.electronAPI.invoke('reader-toolbar-preview', 'settings');
   buttons[0].click();
   await wait(() => settings.hidden && !navigation.hidden, 'Toolbar did not switch between the two right panels');

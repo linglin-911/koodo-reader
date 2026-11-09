@@ -1,10 +1,8 @@
 import { useLatest } from "../../utils/hooks/useLatest";
-import { useTranslation } from "react-i18next";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SettingPanel from "../../containers/panels/settingPanel";
 import NavigationPanel from "../../containers/panels/navigationPanel";
 import { Toaster } from "react-hot-toast";
-import ReaderBottomToolbar from "../../components/readerBottomToolbar";
 import {
   ConfigService,
   ReadingTimeUtil,
@@ -30,20 +28,15 @@ import {
   clearDiscordPresence,
 } from "../../utils/reader/discordRPC";
 import SupportDialog from "../../components/dialogs/supportDialog";
-import ReaderTopToolbar from "../../components/readerTopToolbar";
 import ReaderSideToolbar from "../../components/readerSideToolbar";
 import { READING_PANEL_TOGGLE_EVENT } from "../../utils/reader/mouseEvent";
-import { getReaderWidth, isPaginatedBook, throttle } from "../../utils/common";
+import { isPaginatedBook } from "../../utils/common";
 import { useAppStore } from "../../store/useAppStore";
-
-// Keep legacy controls mounted for existing shortcuts, without hover UI.
-const keepLegacyControlsHidden = () => {};
 
 export interface ReaderState {
   isOpenRightPanel: boolean;
   isOpenLeftPanel: boolean;
   totalDuration: number;
-  currentDuration: number;
 }
 
 declare var window: any;
@@ -73,7 +66,6 @@ const Reader = () => {
     (s) => s.backupPage.isOpenPopupOptionDialog
   );
   const isSettingLocked = useAppStore((s) => s.reader.isSettingLocked);
-  const isDockedRight = useAppStore((s) => s.reader.isDockedRight);
   const isSettingOpen = useAppStore((s) => s.manager.isSettingOpen);
   const handleFetchBooks = useAppStore((s) => s.handleFetchBooks);
   const handleReadingBook = useAppStore((s) => s.handleReadingBook);
@@ -82,19 +74,10 @@ const Reader = () => {
   const handleMenuMode = useAppStore((s) => s.handleMenuMode);
   const handleOriginalText = useAppStore((s) => s.handleOriginalText);
   const handleOpenMenu = useAppStore((s) => s.handleOpenMenu);
-  const handleConvertDialog = useAppStore((s) => s.handleConvertDialog);
-  const handleScalePageDialog = useAppStore((s) => s.handleScalePageDialog);
-  const handlePdfCropDialog = useAppStore((s) => s.handlePdfCropDialog);
-  const handleStudyLangDialog = useAppStore((s) => s.handleStudyLangDialog);
-  const handleAssistReadDialog = useAppStore((s) => s.handleAssistReadDialog);
   const handleFetchAuthed = useAppStore((s) => s.handleFetchAuthed);
-  const handleSpeechDialog = useAppStore((s) => s.handleSpeechDialog);
-  const handleAnnotationDialog = useAppStore((s) => s.handleAnnotationDialog);
   const handleFetchUserInfo = useAppStore((s) => s.handleFetchUserInfo);
   const handleBackgroundColor = useAppStore((s) => s.handleBackgroundColor);
-  const { t } = useTranslation();
   const currentProps = {
-    t,
     currentBook,
     htmlBook,
     readerMode,
@@ -108,7 +91,6 @@ const Reader = () => {
     isAnnotationOpen,
     isOpenPopupOptionDialog,
     isSettingLocked,
-    isDockedRight,
     isSettingOpen,
     handleFetchBooks,
     handleReadingBook,
@@ -117,14 +99,7 @@ const Reader = () => {
     handleMenuMode,
     handleOriginalText,
     handleOpenMenu,
-    handleConvertDialog,
-    handleScalePageDialog,
-    handlePdfCropDialog,
-    handleStudyLangDialog,
-    handleAssistReadDialog,
     handleFetchAuthed,
-    handleSpeechDialog,
-    handleAnnotationDialog,
     handleFetchUserInfo,
     handleBackgroundColor,
   };
@@ -133,14 +108,11 @@ const Reader = () => {
     isOpenLeftPanel: isNavLocked,
     isOpenRightPanel: isSettingLocked && !isNavLocked,
     totalDuration: 0,
-    currentDuration: 0,
   });
   const stateRef = useLatest(state);
   const updateState = (patch: Partial<ReaderState>) =>
     setState((prev) => ({ ...prev, ...patch }));
   const tickTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
-  const dialogAnchorIconRef = useRef<HTMLElement | null>(null);
-  const didMountRef = useRef(false);
   useEffect(() => {
     const rendition = htmlBook?.rendition;
     if (typeof rendition?.applyAnnotationConfig !== "function") return;
@@ -230,84 +202,6 @@ const Reader = () => {
       handleEnterReader(position);
     }
   };
-  const closeSettingDialogs = () => {
-    propsRef.current.handleScalePageDialog(false);
-    propsRef.current.handleConvertDialog(false);
-    propsRef.current.handlePdfCropDialog(false);
-    propsRef.current.handleStudyLangDialog(false);
-    propsRef.current.handleAssistReadDialog(false);
-    propsRef.current.handleSpeechDialog(false);
-  };
-  const handleAnnotationClick = () => {
-    if (isAnnotationOpen) {
-      propsRef.current.handleAnnotationDialog(false);
-      return;
-    }
-    dialogAnchorIconRef.current = null;
-    closeSettingDialogs();
-    propsRef.current.handleAnnotationDialog(true);
-  };
-  const updateSettingDialogPosition = () => {
-    const anchor = document.querySelector<HTMLElement>(
-      ".reader-setting-dialog-anchor"
-    );
-    const dialog = Array.from(
-      anchor?.querySelectorAll<HTMLElement>(".sort-dialog-container") || []
-    ).find((item) => item.offsetParent !== null && item.offsetWidth > 0);
-    if (!anchor || !dialog) return;
-    const icon = dialogAnchorIconRef.current;
-    if (!icon || !icon.isConnected) return;
-    const iconRect = icon.getBoundingClientRect();
-    const iconCenter = iconRect.left + iconRect.width / 2;
-    const viewportWidth = getReaderWidth();
-    const reservedRight =
-      propsRef.current.isDockedRight
-        ? 300
-        : 0;
-    const dialogWidth = dialog.offsetWidth;
-    if (!dialogWidth) return;
-    const minLeft = 8;
-    const maxLeft = Math.max(
-      minLeft,
-      viewportWidth - reservedRight - dialogWidth - 8
-    );
-    const left = Math.min(
-      maxLeft,
-      Math.max(minLeft, iconCenter - dialogWidth / 2)
-    );
-    document.documentElement.style.setProperty(
-      "--reader-dialog-anchor-x",
-      `${iconCenter}px`
-    );
-    if (!anchor.dataset.positioned) {
-      anchor.style.transition = "none";
-      anchor.style.left = `${left}px`;
-      void anchor.offsetWidth;
-      anchor.style.transition = "";
-      anchor.dataset.positioned = "true";
-    } else {
-      anchor.style.left = `${left}px`;
-    }
-  };
-  const handleDialogButtonHover = (
-    handleDialog: (isOpen: boolean) => void,
-    dialogSelector: string
-  ) => ({
-    onMouseEnter: (event: React.MouseEvent<HTMLDivElement>) => {
-      dialogAnchorIconRef.current = event.currentTarget;
-      closeSettingDialogs();
-      handleDialog(true);
-      updateSettingDialogPosition();
-      window.requestAnimationFrame(updateSettingDialogPosition);
-    },
-    onMouseLeave: () => {
-      window.setTimeout(() => {
-        if (!document.querySelector(`${dialogSelector}:hover`)) {
-          handleDialog(false);
-        }
-      }, 200);
-    },
-  });
   useEffect(() => {
     const run = async () => {
       let url = document.location.href;
@@ -351,7 +245,7 @@ const Reader = () => {
         const savedTotal = readingTimeUtilRef.current!.getTotalSeconds(
           book.key
         );
-        updateState({ totalDuration: savedTotal, currentDuration: 0 });
+        updateState({ totalDuration: savedTotal });
         if (isElectron) {
           updateDiscordPresence(book);
         }
@@ -377,7 +271,6 @@ const Reader = () => {
       setState((prev) => ({
         ...prev,
         totalDuration: prev.totalDuration + 60,
-        currentDuration: prev.currentDuration + 60,
       }));
     }, 60000);
 
@@ -387,12 +280,10 @@ const Reader = () => {
       }
     });
     document.addEventListener("click", handleOutsidePanelClick, true);
-    const repositionDialogs = throttle(updateSettingDialogPosition, 100);
     window.addEventListener(
       READING_PANEL_TOGGLE_EVENT,
       handleReadingPanelToggle
     );
-    window.addEventListener("resize", repositionDialogs);
 
     return () => {
       document.removeEventListener("click", handleOutsidePanelClick, true);
@@ -400,8 +291,6 @@ const Reader = () => {
         READING_PANEL_TOGGLE_EVENT,
         handleReadingPanelToggle
       );
-      window.removeEventListener("resize", repositionDialogs);
-      repositionDialogs.cancel();
       if (isElectron) {
         clearDiscordPresence();
       }
@@ -414,22 +303,8 @@ const Reader = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true;
-      return;
-    }
-    if (document.querySelector(".reader-setting-dialog-anchor")) {
-      updateSettingDialogPosition();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  });
-
   const isSeparateElectronWindow =
     isElectron && ConfigService.getReaderConfig("isOpenInMain") !== "yes";
-  const isMacOS =
-    isElectron && window.electronAPI?.runtime?.platform === "darwin";
-  const isMergeWord = ConfigService.getReaderConfig("isMergeWord") === "yes";
   const renditionProps = {
     handleLeaveReader: handleLeaveReader,
     handleEnterReader: handleEnterReader,
@@ -445,26 +320,9 @@ const Reader = () => {
             <div className="reader-window-drag-region" />
           )}
 
-          <div className="reader-legacy-controls" hidden>
-            <ReaderTopToolbar
-              isNearEdge={false}
-              currentDuration={state.currentDuration}
-              isMacOS={isMacOS}
-              isMergeWord={isMergeWord}
-              isSeparateElectronWindow={isSeparateElectronWindow}
-              showQuickButtons={keepLegacyControlsHidden}
-              hideQuickButtons={keepLegacyControlsHidden}
-              handleDialogButtonHover={handleDialogButtonHover}
-              handleAnnotationClick={handleAnnotationClick}
-            />
-
-            <ReaderBottomToolbar
-              isNearEdge={false}
-              showQuickButtons={keepLegacyControlsHidden}
-              hideQuickButtons={keepLegacyControlsHidden}
-            />
-
-            {/* Compatibility targets for navigation/search keyboard commands. */}
+          {/* The old top/bottom toolbars are no longer mounted. Only directory
+              command targets remain for the existing navigation event route. */}
+          <div className="reader-panel-command-targets" hidden>
             <div className="left-panel" onClick={() => handleEnterReader("left")} />
             <div className="right-panel" onClick={() => handleEnterReader("right")} />
           </div>
