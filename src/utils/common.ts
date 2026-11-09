@@ -640,6 +640,10 @@ export const openExternalUrl = (
 export const openInBrowser = (url: string) => {
   isElectron ? window.electronAPI.shell.openExternal(url) : window.open(url);
 };
+export const getReaderWidth = () =>
+  document.querySelector<HTMLElement>(".reader-workspace")?.clientWidth ||
+  document.body.clientWidth;
+
 export const getPageWidth = (
   readerMode: string,
   scale: string,
@@ -648,6 +652,8 @@ export const getPageWidth = (
   isSettingLocked: boolean,
   isFitPage: boolean = false
 ) => {
+  // Use the actual workspace so the independent toolbar never covers the page.
+  const workspaceWidth = getReaderWidth();
   // 页间距与 kookit 渲染引擎的 getSectionGap 保持一致：
   // 未设置时取 min(60, 宽度/12)，只能取偶数
   const getPageGapValue = (width: number) => {
@@ -673,7 +679,7 @@ export const getPageWidth = (
     // 固定左右侧边栏时，页面只在剩余可用区域内铺满，避免被侧边栏遮挡
     const panelWidth = 300;
     let pageWidth =
-      document.body.clientWidth -
+      workspaceWidth -
       106 -
       (isNavLocked ? panelWidth : 0) -
       (isSettingLocked ? panelWidth : 0);
@@ -686,10 +692,10 @@ export const getPageWidth = (
 
   //缩放过高时按窗口宽度封顶
   if (
-    document.body.clientWidth * 0.6 * Math.abs(parseFloat(scale)) >
-    document.body.clientWidth
+    workspaceWidth * 0.6 * Math.abs(parseFloat(scale)) >
+    workspaceWidth
   ) {
-    let pageWidth = document.body.clientWidth - 106;
+    let pageWidth = workspaceWidth - 106;
     let pageOffset = 50 + "px";
     return {
       pageOffset,
@@ -703,29 +709,29 @@ export const getPageWidth = (
     //页面宽度以 scale=1 的默认宽度（视口宽度 * 0.6）为基准等比例缩放，
     //使预设百分比与实际显示宽度成正比，避免低百分比时出现过窄页面
     let preWidth =
-      document.body.clientWidth * 0.6 * Math.abs(parseFloat(scale)) -
+      workspaceWidth * 0.6 * Math.abs(parseFloat(scale)) -
       (isNavLocked ? 300 : 0) -
       (isSettingLocked ? 300 : 0);
     let width = findValidMultiple(preWidth);
-    pageOffset = `calc(50vw + ${isNavLocked ? 150 : 0}px - ${
+    pageOffset = `calc(${workspaceWidth / 2}px + ${isNavLocked ? 150 : 0}px - ${
       isSettingLocked ? 150 : 0
     }px - ${width / 2}px)`;
     pageWidth = width;
   } else if (readerMode === "double") {
     let width = findValidMultiple(
-      document.body.clientWidth -
+      workspaceWidth -
         2 * margin -
         80 -
         (isNavLocked ? 300 : 0) -
         (isSettingLocked ? 300 : 0)
     );
-    pageOffset = `calc(50vw + ${isNavLocked ? 150 : 0}px - ${
+    pageOffset = `calc(${workspaceWidth / 2}px + ${isNavLocked ? 150 : 0}px - ${
       isSettingLocked ? 150 : 0
     }px - ${width / 2}px)`;
     pageWidth = width;
   }
-  if (pageWidth > document.body.clientWidth) {
-    pageWidth = document.body.clientWidth - 106;
+  if (pageWidth > workspaceWidth) {
+    pageWidth = workspaceWidth - 106;
     pageOffset = 50 + "px";
   }
   return {

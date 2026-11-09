@@ -31,7 +31,6 @@ export interface ReaderTopToolbarProps {
     onMouseLeave: () => void;
   };
   handleAnnotationClick: () => void;
-  handleEnterReader: (position: string) => void;
 }
 
 declare var window: any;
@@ -510,21 +509,7 @@ const ReaderTopToolbar = (props: ReaderTopToolbarProps) => {
               ></span>
             </div>
           )}
-          <div
-            className="reader-setting-icon-container"
-            aria-label={t("Toggle menu")}
-            data-tooltip-id="my-tooltip"
-            data-tooltip-content={t("Toggle menu")}
-            onClick={() => {
-              props.handleEnterReader("left");
-              props.handleEnterReader("right");
-            }}
-          >
-            <span
-              className="icon-grid reader-setting-icon"
-              style={{ fontSize: 16 }}
-            ></span>
-          </div>
+          {/* The dedicated right toolbar replaces the combined panel toggle. */}
           {showCustomWindowControls && (
             <WindowControls t={t} isMacOS={props.isMacOS} />
           )}

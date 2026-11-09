@@ -1,7 +1,11 @@
 import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import "./popupMenu.css";
-import { isFixedLayoutBook, isPaginatedBook } from "../../../utils/common";
+import {
+  getReaderWidth,
+  isFixedLayoutBook,
+  isPaginatedBook,
+} from "../../../utils/common";
 import PopupOption from "../popupOption";
 import ColorOption from "../../colorOption";
 import { getIframeDoc } from "../../../utils/reader/docUtil";
@@ -116,7 +120,7 @@ const PopupMenu = (props: PopupMenuProps) => {
       posX = posX - pageSize.scrollLeft;
     }
     return {
-      posX: Math.min(Math.max(12, posX), window.innerWidth - 12 - MENU_WIDTH),
+      posX: Math.min(Math.max(12, posX), getReaderWidth() - 12 - MENU_WIDTH),
       posY,
     } as any;
   };

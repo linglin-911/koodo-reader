@@ -1,3 +1,4 @@
+import { getReaderWidth } from "../../../utils/common";
 import { useLatest } from "../../../utils/hooks/useLatest";
 import { useTranslation } from "react-i18next";
 import React, { useEffect, useRef, useState } from "react";
@@ -197,7 +198,7 @@ const PopupBox = (props: PopupBoxProps) => {
       // 图标中心距 popup 上边缘 = 9
       // 反推：让图标中心对齐鼠标，计算 popup 的 left% 和 bottom%
       const rawLeft =
-        ((e.clientX - popupWidth / 2 + 33) / window.innerWidth) * 100;
+        ((e.clientX - popupWidth / 2 + 33) / getReaderWidth()) * 100;
       const newLeft = Math.max(0, Math.min(100, rawLeft));
       const rawBottom =
         ((window.innerHeight - e.clientY - popupHeight + 9) /
@@ -239,7 +240,7 @@ const PopupBox = (props: PopupBoxProps) => {
     const dy = e.clientY - dragStart.current.y;
     const newLeft = Math.max(
       0,
-      Math.min(100, dragStart.current.left + (dx / window.innerWidth) * 100)
+      Math.min(100, dragStart.current.left + (dx / getReaderWidth()) * 100)
     );
     const newBottom = Math.max(
       0,
@@ -250,9 +251,9 @@ const PopupBox = (props: PopupBoxProps) => {
     const isNearBottom = bottomPx < SNAP_THRESHOLD_PX;
 
     const rightEdgePx =
-      (newLeft / 100) * window.innerWidth + stateRef.current.popupWidth / 2;
+      (newLeft / 100) * getReaderWidth() + stateRef.current.popupWidth / 2;
     const isNearRight =
-      window.innerWidth - rightEdgePx < RIGHT_SNAP_THRESHOLD_PX;
+      getReaderWidth() - rightEdgePx < RIGHT_SNAP_THRESHOLD_PX;
 
     updateState({
       popupLeft: newLeft,
@@ -267,8 +268,8 @@ const PopupBox = (props: PopupBoxProps) => {
     isDragging.current = false;
     let { popupLeft, popupBottom, popupWidth } = stateRef.current;
 
-    const rightEdgePx = (popupLeft / 100) * window.innerWidth + popupWidth / 2;
-    if (window.innerWidth - rightEdgePx < RIGHT_SNAP_THRESHOLD_PX) {
+    const rightEdgePx = (popupLeft / 100) * getReaderWidth() + popupWidth / 2;
+    if (getReaderWidth() - rightEdgePx < RIGHT_SNAP_THRESHOLD_PX) {
       updateState({
         isDockedRight: true,
         isNearRight: false,
@@ -389,7 +390,7 @@ const PopupBox = (props: PopupBoxProps) => {
 
   const containerStyle: React.CSSProperties = isDockedRight
     ? {
-        position: "fixed",
+        position: "absolute",
         right: 0,
         top: 0,
         left: "auto",

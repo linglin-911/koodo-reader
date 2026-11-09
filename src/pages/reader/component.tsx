@@ -31,8 +31,9 @@ import {
 } from "../../utils/reader/discordRPC";
 import SupportDialog from "../../components/dialogs/supportDialog";
 import ReaderTopToolbar from "../../components/readerTopToolbar";
+import ReaderSideToolbar from "../../components/readerSideToolbar";
 import { READING_PANEL_TOGGLE_EVENT } from "../../utils/reader/mouseEvent";
-import { isPaginatedBook, throttle } from "../../utils/common";
+import { getReaderWidth, isPaginatedBook, throttle } from "../../utils/common";
 import { getOuterDoc } from "../../utils/reader/docUtil";
 import { useAppStore } from "../../store/useAppStore";
 
@@ -353,8 +354,7 @@ const Reader = () => {
     if (!icon || !icon.isConnected) return;
     const iconRect = icon.getBoundingClientRect();
     const iconCenter = iconRect.left + iconRect.width / 2;
-    const viewportWidth =
-      document.documentElement.clientWidth || window.innerWidth;
+    const viewportWidth = getReaderWidth();
     const reservedRight =
       propsRef.current.isSettingLocked || propsRef.current.isDockedRight
         ? 300
@@ -661,151 +661,158 @@ const Reader = () => {
     <div
       className={"viewer" + (state.isNearEdge ? " quick-buttons-shown" : "")}
     >
-      <Tooltip id="my-tooltip" style={{ zIndex: 25 }} />
-      {isSeparateElectronWindow && (
-        <div className="reader-window-drag-region" />
-      )}
-
-      <ReaderTopToolbar
-        isNearEdge={state.isNearEdge && !isUndockedPopupBoxOpen}
-        currentDuration={state.currentDuration}
-        isMacOS={isMacOS}
-        isMergeWord={isMergeWord}
-        isSeparateElectronWindow={isSeparateElectronWindow}
-        showQuickButtons={showQuickButtons}
-        hideQuickButtons={hideQuickButtons}
-        handleDialogButtonHover={handleDialogButtonHover}
-        handleAnnotationClick={handleAnnotationClick}
-        handleEnterReader={handleEnterReader}
-      />
-
-      <ReaderBottomToolbar
-        isNearEdge={state.isNearEdge && !isUndockedPopupBoxOpen}
-        showQuickButtons={showQuickButtons}
-        hideQuickButtons={hideQuickButtons}
-      />
-
-      {isSettingOpen && (
-        <>
-          <SettingDialog />
-          <div className="drag-background"></div>
-        </>
-      )}
-      <Toaster
-        toastOptions={{
-          style: {
-            padding: "8px 10px",
-            wordWrap: "break-word",
-            wordBreak: "break-word",
-            whiteSpace: "normal",
-            overflowWrap: "break-word",
-          },
-        }}
-      />
-
-      <div
-        className="left-panel"
-        onMouseEnter={() => handleEdgeMouseEnter("left")}
-        onMouseLeave={() => handleEdgeMouseLeave("left")}
-        style={state.hoverPanel === "left" ? { opacity: 0.5 } : {}}
-        onClick={() => {
-          handleEnterReader("left");
-        }}
-      >
-        <span className="icon-grid panel-icon"></span>
-      </div>
-      <div
-        className="right-panel"
-        onMouseEnter={() => handleEdgeMouseEnter("right")}
-        onMouseLeave={() => handleEdgeMouseLeave("right")}
-        style={
-          state.hoverPanel === "right"
-            ? {
-                opacity: 0.5,
-                right: isDockedRight ? "299px" : "0px",
-              }
-            : { right: isDockedRight ? "299px" : "0px" }
-        }
-        onClick={() => {
-          handleEnterReader("right");
-        }}
-      >
-        <span className="icon-grid panel-icon"></span>
-      </div>
-
-      <div
-        className="setting-panel-container"
-        onMouseEnter={() => {
-          cancelLeaveReader("right");
-        }}
-        onMouseLeave={() => {
-          scheduleLeaveReader("right");
-        }}
-        style={
-          state.isOpenRightPanel
-            ? {}
-            : {
-                transform: "translateX(309px)",
-              }
-        }
-      >
-        <SettingPanel />
-      </div>
-      <div
-        className="navigation-panel-container"
-        onMouseEnter={() => {
-          cancelLeaveReader("left");
-        }}
-        onMouseLeave={() => {
-          scheduleLeaveReader("left");
-        }}
-        style={
-          state.isOpenLeftPanel
-            ? {}
-            : {
-                transform: "translateX(-309px)",
-              }
-        }
-      >
-        <NavigationPanel
-          {...({
-            totalDuration: state.totalDuration,
-            isOpen: state.isOpenLeftPanel,
-          } as any)}
-        />
-      </div>
-
-      {currentBook.key && <Viewer {...(renditionProps as any)} />}
-      <div className="reader-setting-dialog-anchor">
-        {(readerMode === "scroll" || readerMode === "single") && (
-          <KeepMounted open={isScaleOpen}>
-            <ScalePageDialog />
-          </KeepMounted>
+      <div className="reader-workspace">
+        <Tooltip id="my-tooltip" style={{ zIndex: 25 }} />
+        {isSeparateElectronWindow && (
+          <div className="reader-window-drag-region" />
         )}
-        <KeepMounted open={isConvertOpen}>
-          <ConvertDialog />
-        </KeepMounted>
-        <KeepMounted open={isPdfCropOpen}>
-          <PdfCropDialog />
-        </KeepMounted>
-        <KeepMounted open={isStudyLangOpen}>
-          <StudyLangDialog />
-        </KeepMounted>
-        <KeepMounted open={isAssistReadOpen}>
-          <AssistReadDialog />
-        </KeepMounted>
-        <KeepMounted open={isSpeechOpen}>
-          <SpeechDialog />
-        </KeepMounted>
+
+        <ReaderTopToolbar
+          isNearEdge={state.isNearEdge && !isUndockedPopupBoxOpen}
+          currentDuration={state.currentDuration}
+          isMacOS={isMacOS}
+          isMergeWord={isMergeWord}
+          isSeparateElectronWindow={isSeparateElectronWindow}
+          showQuickButtons={showQuickButtons}
+          hideQuickButtons={hideQuickButtons}
+          handleDialogButtonHover={handleDialogButtonHover}
+          handleAnnotationClick={handleAnnotationClick}
+        />
+
+        <ReaderBottomToolbar
+          isNearEdge={state.isNearEdge && !isUndockedPopupBoxOpen}
+          showQuickButtons={showQuickButtons}
+          hideQuickButtons={hideQuickButtons}
+        />
+
+        {isSettingOpen && (
+          <>
+            <SettingDialog />
+            <div className="drag-background"></div>
+          </>
+        )}
+        <Toaster
+          toastOptions={{
+            style: {
+              padding: "8px 10px",
+              wordWrap: "break-word",
+              wordBreak: "break-word",
+              whiteSpace: "normal",
+              overflowWrap: "break-word",
+            },
+          }}
+        />
+
+        <div
+          className="left-panel"
+          onMouseEnter={() => handleEdgeMouseEnter("left")}
+          onMouseLeave={() => handleEdgeMouseLeave("left")}
+          style={state.hoverPanel === "left" ? { opacity: 0.5 } : {}}
+          onClick={() => {
+            handleEnterReader("left");
+          }}
+        >
+          <span className="icon-grid panel-icon"></span>
+        </div>
+        <div
+          className="right-panel"
+          onMouseEnter={() => handleEdgeMouseEnter("right")}
+          onMouseLeave={() => handleEdgeMouseLeave("right")}
+          style={
+            state.hoverPanel === "right"
+              ? {
+                  opacity: 0.5,
+                  right: isDockedRight ? "299px" : "0px",
+                }
+              : { right: isDockedRight ? "299px" : "0px" }
+          }
+          onClick={() => {
+            handleEnterReader("right");
+          }}
+        >
+          <span className="icon-grid panel-icon"></span>
+        </div>
+
+        <div
+          id="reader-settings-panel"
+          className="setting-panel-container"
+          onMouseEnter={() => {
+            cancelLeaveReader("right");
+          }}
+          onMouseLeave={() => {
+            scheduleLeaveReader("right");
+          }}
+          style={
+            state.isOpenRightPanel
+              ? {}
+              : {
+                  transform: "translateX(309px)",
+                }
+          }
+        >
+          <SettingPanel />
+        </div>
+        <div
+          id="reader-navigation-panel"
+          className="navigation-panel-container"
+          onMouseEnter={() => {
+            cancelLeaveReader("left");
+          }}
+          onMouseLeave={() => {
+            scheduleLeaveReader("left");
+          }}
+          style={
+            state.isOpenLeftPanel
+              ? {}
+              : {
+                  transform: "translateX(-309px)",
+                }
+          }
+        >
+          <NavigationPanel
+            {...({
+              totalDuration: state.totalDuration,
+              isOpen: state.isOpenLeftPanel,
+            } as any)}
+          />
+        </div>
+
+        {currentBook.key && <Viewer {...(renditionProps as any)} />}
+        <div className="reader-setting-dialog-anchor">
+          {(readerMode === "scroll" || readerMode === "single") && (
+            <KeepMounted open={isScaleOpen}>
+              <ScalePageDialog />
+            </KeepMounted>
+          )}
+          <KeepMounted open={isConvertOpen}>
+            <ConvertDialog />
+          </KeepMounted>
+          <KeepMounted open={isPdfCropOpen}>
+            <PdfCropDialog />
+          </KeepMounted>
+          <KeepMounted open={isStudyLangOpen}>
+            <StudyLangDialog />
+          </KeepMounted>
+          <KeepMounted open={isAssistReadOpen}>
+            <AssistReadDialog />
+          </KeepMounted>
+          <KeepMounted open={isSpeechOpen}>
+            <SpeechDialog />
+          </KeepMounted>
+        </div>
+        {isAnnotationOpen && <AnnotationDialog />}
+        <SupportDialog />
+        {isOpenPopupOptionDialog && (
+          <>
+            <PopupOptionDialog />
+            <div className="drag-background"></div>
+          </>
+        )}
       </div>
-      {isAnnotationOpen && <AnnotationDialog />}
-      <SupportDialog />
-      {isOpenPopupOptionDialog && (
-        <>
-          <PopupOptionDialog />
-          <div className="drag-background"></div>
-        </>
-      )}
+      <ReaderSideToolbar
+        isNavigationOpen={state.isOpenLeftPanel}
+        isSettingsOpen={state.isOpenRightPanel}
+      />
     </div>
   );
 };

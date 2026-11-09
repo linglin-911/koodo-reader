@@ -425,8 +425,7 @@ const PageWidget = () => {
               style={
                 state.isSingle
                   ? {
-                      left: `calc(50vw - 
-                      270px)`,
+                      left: "calc(50% - 270px)",
                     }
                   : {}
               }
@@ -440,8 +439,7 @@ const PageWidget = () => {
               style={
                 state.isSingle
                   ? {
-                      right: `calc(50vw - 
-                      270px)`,
+                      right: "calc(50% - 270px)",
                     }
                   : {}
               }
@@ -467,8 +465,7 @@ const PageWidget = () => {
               style={
                 state.isSingle
                   ? {
-                      left: `calc(50vw - 
-                      270px)`,
+                      left: "calc(50% - 270px)",
                     }
                   : {}
               }

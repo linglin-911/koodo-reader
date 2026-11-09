@@ -1237,5 +1237,9 @@
   "Saved location needs manual review": "原位置需要手动确认",
   "Binding changed during rebuilding": "重建期间绑定已被修改",
   "The library original is still available. Use validate and rebuild.": "书库原文仍然可用，请使用“完整校验并安全重建”。",
-  "Results from the latest rebuild. Locations edited afterward are omitted.": "以下为最近一次重建的结果；之后手动修改的位置不再列入。"
+  "Results from the latest rebuild. Locations edited afterward are omitted.": "以下为最近一次重建的结果；之后手动修改的位置不再列入。",
+  "Reader shortcuts": "阅读快捷工具栏",
+  "Current chapter annotations": "当前章节批注",
+  "Current chapter annotations (coming later)": "当前章节批注（后续接入）",
+  "Reading settings": "阅读设置"
 }
