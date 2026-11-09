@@ -1249,5 +1249,16 @@
   "Saved location needs manual review": "Saved location needs manual review",
   "Binding changed during rebuilding": "Binding changed during rebuilding",
   "The library original is still available. Use validate and rebuild.": "The library original is still available. Use validate and rebuild.",
-  "Results from the latest rebuild. Locations edited afterward are omitted.": "Results from the latest rebuild. Locations edited afterward are omitted."
+  "Results from the latest rebuild. Locations edited afterward are omitted.": "Results from the latest rebuild. Locations edited afterward are omitted.",
+  "Reading tools": "Reading tools",
+  "Current chapter annotations": "Current chapter annotations",
+  "Reading settings": "Reading settings",
+  "Contents": "Contents",
+  "New chapter annotation": "New chapter annotation",
+  "New range annotation": "New range annotation",
+  "Local tags": "Local tags",
+  "Global tags": "Global tags",
+  "Tag name": "Tag name",
+  "Write an annotation before saving": "Write an annotation before saving",
+  "Selected source text": "Selected source text"
 }

@@ -1,3 +1,5 @@
+import { openQuickAnnotation } from "../../annotations/readerEvents";
+import { isElectron } from "react-device-detect";
 import { useTranslation } from "react-i18next";
 
 import "./popupOption.css";
@@ -57,6 +59,7 @@ const PopupOption = (props: PopupOptionProps) => {
   const handleQuoteText = useAppStore((s) => s.handleQuoteText);
   const { t } = useTranslation();
   const handleNote = () => {
+    if(isElectron){openQuickAnnotation({kind:"small",selection:true});return;}
     handleMenuMode("note");
     handleOpenMenu(true);
   };
@@ -272,6 +275,9 @@ const PopupOption = (props: PopupOptionProps) => {
     }
   };
 
+  if(isElectron)return <div className="annotation-selection-menu" onMouseDown={event=>event.preventDefault()}>
+    <button onClick={handleNote}>{t("Small annotation")}</button><button onClick={()=>openQuickAnnotation({kind:"small",selection:true,append:true})}>{t("Add to small annotation")}</button><button onClick={handleCopy}>{t("Copy")}</button>
+  </div>;
   const isFixedLayout = isFixedLayoutBook(currentBook);
     const popupOptionKeys = getEnabledPopupOptionKeys().filter((item) => {
       if (

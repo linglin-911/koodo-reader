@@ -20,14 +20,10 @@ interface Rendition {
 }
 export const annotationTarget = (event: Event) => {
   const element = (event.target as Element)?.closest<HTMLElement>("[data-key]");
-  useAppStore
-    .getState()
-    .handleAnnotationTarget(
-      element?.dataset.noteKey || element?.dataset.key || "",
-      element?.dataset.bindingId || ""
-    );
-  useAppStore.getState().handleMenuMode("note");
-  useAppStore.getState().handleOpenMenu(true);
+  const doc=element?.ownerDocument;
+  const frame=doc?.defaultView?.frameElement?.getBoundingClientRect();
+  const mouse=event as MouseEvent;
+  window.dispatchEvent(new CustomEvent("koodo:annotation-hit",{detail:{key:element?.dataset.noteKey||element?.dataset.key||"",bindingId:element?.dataset.bindingId||element?.dataset.key||"",x:mouse.clientX+(frame?.left||0),y:mouse.clientY+(frame?.top||0)}}));
 };
 export const captureAnnotation = async (
   book: Book,
@@ -39,7 +35,7 @@ export const captureAnnotation = async (
   if (book.format === "TXT") {
     if (!rendition.getAnnotationAnchor)
       throw new Error("Source mapping is unavailable");
-    return { ...rendition.getAnnotationAnchor(), style };
+    return { ...rendition.getAnnotationAnchor(), quote:getIframeDoc(book).map(doc=>doc?.getSelection()?.toString()||"").find(Boolean)||"", style };
   }
   const quote =
     getIframeDoc(book)
@@ -112,7 +108,7 @@ export const restoreAnnotations = async (
   }
   if (restoreVersions.get(rendition) !== version ||
       (chapter && rendition.getTxtChapterSnapshot?.()?.chapterId !== chapter.chapterId)) return;
-  await rendition.renderHighlighters(rows, annotationTarget, index);
+  await rendition.renderHighlighters(rows.map(row=>row.color==="annotation"?row:{...row,color:"annotation-dots"}), annotationTarget, index);
   for (const doc of getIframeDoc(book)) {
     if (!doc) continue;
     for (const element of Array.from(

@@ -7,6 +7,7 @@ import { useAppStore } from "../../store/useAppStore";
 import { useLatest } from "../../utils/hooks/useLatest";
 
 const Background = () => {
+  const annotationLayout = useAppStore(s=>s.reader.annotationLayout);
   const readerMode = useAppStore((s) => s.reader.readerMode);
   const isNavLocked = useAppStore((s) => s.reader.isNavLocked);
   const isSettingLocked = useAppStore((s) => s.reader.isSettingLocked);
@@ -92,6 +93,7 @@ const Background = () => {
       )
     );
   }, [
+    annotationLayout,
     margin,
     scale,
     readerMode,

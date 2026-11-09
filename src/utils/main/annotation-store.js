@@ -35,6 +35,7 @@ const ACTIONS = new Set([
     "bind",
     "reading",
     "reading-window",
+    "overlap",
     "recovery-results",
 ]);
 const validString = (value, max = 1024) => typeof value === "string" && value.length <= max && !value.includes("\0");
@@ -472,6 +473,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 where.push("n.kind=?");
                 args.push(c.kind);
             }
+            if(c.kinds){if(!Array.isArray(c.kinds)||!c.kinds.length||c.kinds.some(kind=>!TABLES[kind]))throw Error("Invalid annotation kinds");where.push(`n.kind IN (${c.kinds.map(()=>"?").join(",")})`);args.push(...c.kinds);}
             if (c.tab === "highlight")
                 where.push("n.kind='small' AND n.notes=''");
             if (c.tab === "note")
@@ -482,13 +484,15 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 const current = await describeChapter(owner, c.sourceTicket, c.chapterIndex, c.chapterId, false);
                 if (current.bookId !== c.bookKey)
                     throw new Error("Cross-book related query");
+                let last=current;
+                if(c.endChapterIndex!==undefined){last=await describeChapter(owner,c.sourceTicket,c.endChapterIndex,c.endChapterId,false);if(last.bookId!==current.bookId||last.generation!==current.generation||c.endChapterIndex<c.chapterIndex)throw Error("Invalid related range");}
                 where.push("(" +
                     Object.values(TABLES)
                         .map((table) => `EXISTS(SELECT 1 FROM ${table} b WHERE b.note_key=n.key AND b.status='active' AND b.generation=? AND b.start_index<=? AND b.end_index>=?)`)
                         .join(" OR ") +
                     ")");
                 for (const table of Object.values(TABLES))
-                    args.push(current.generation, c.chapterIndex, c.chapterIndex);
+                    args.push(current.generation, c.endChapterIndex??c.chapterIndex, c.chapterIndex);
             }
             if (c.keyword) {
                 requireString(c.keyword, 2048);
@@ -547,6 +551,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 const old = db.prepare("SELECT * FROM notes WHERE key=?").get(key);
                 if (old && (n.version !== old.version || old.bookKey !== book || old.kind !== n.kind))
                     throw new Error("Annotation changed; reload before saving");
+                if(!old&&n.kind==="small"&&!body.trim())throw Error("Small annotations require body text");
                 const selected = resolveTagIds(db, n, old);
                 if (old) {
                     requireChange(db.prepare("UPDATE notes SET notes=?,title=?,tag=?,updated_at=?,version=version+1 WHERE key=? AND version=?")
@@ -648,6 +653,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
         }
         if (c.action === "bind" || c.action === "create") {
             const creating = c.action === "create";
+            if(creating && c.note?.kind==="small" && !String(c.note.notes||"").trim())throw Error("Small annotations require body text");
             // Validate all user fields before touching formal data. Source reads
             // below also happen outside the transaction; publication is atomic.
             const note = creating ? metrics.input(() => {
@@ -762,6 +768,27 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 db.prepare(`INSERT INTO ${table} VALUES(${Array(16).fill("?").join(",")},1,NULL)`).run(id, note.key, note.bookKey, input.format, generation, chapterId, startIndex, endIndex, "active", JSON.stringify(anchor), quote, prefix, suffix, relativeStart, relativeEnd, requireString(input.style || "background-#FEF3CD", 256));
             })();
             return dto(db, db.prepare("SELECT * FROM notes WHERE key=?").get(note.key));
+        }
+        if(c.action === "overlap") {
+            const book=identifier(c.bookKey),id=identifier(c.bindingId),limit=c.limit??50,offset=c.offset??0;
+            if(!Number.isSafeInteger(limit)||limit<1||limit>200||!Number.isSafeInteger(offset)||offset<0||offset>10000000)throw Error("Invalid overlap page");
+            const seed=db.prepare("SELECT * FROM note_bindings WHERE id=? AND book_id=? AND status='active'").get(id,book);
+            if(!seed)throw Error("Annotation position unavailable");
+            if(seed.format!=="TXT") { const value=dto(db,db.prepare("SELECT key,bookKey,kind,title,substr(notes,1,160) AS notes,tag,date,version FROM notes WHERE key=?").get(seed.note_key),false);return {records:offset?[]:[value],hasMore:false}; }
+            const current=await describeChapter(owner,c.sourceTicket,seed.start_index,seed.chapter_id,false);
+            if(current.bookId!==book||current.generation!==seed.generation)throw Error("Stale annotation position");
+            // Interval islands use the preceding running maximum, not just the
+            // preceding interval. This includes nested and transitive overlaps,
+            // including relationships beyond the currently mounted TXT blocks.
+            const rows=db.prepare(`WITH ordered AS (
+              SELECT id,note_key,quote,relative_start,relative_end,MAX(relative_end) OVER(ORDER BY relative_start,relative_end,id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS previous_end
+              FROM note_bindings WHERE book_id=? AND generation=? AND start_index=? AND status='active'
+            ), islands AS (
+              SELECT *,SUM(CASE WHEN previous_end IS NULL OR relative_start>=previous_end THEN 1 ELSE 0 END) OVER(ORDER BY relative_start,relative_end,id) AS island FROM ordered
+            ), matches AS (
+              SELECT note_key,substr(quote,1,160) AS quote,ROW_NUMBER() OVER(PARTITION BY note_key ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END,relative_start,id) AS choice FROM islands WHERE island=(SELECT island FROM islands WHERE id=?)
+            ) SELECT n.key,n.bookKey,n.kind,n.title,substr(n.notes,1,160) AS notes,n.tag,n.date,n.version,m.quote AS text FROM matches m JOIN notes n ON n.key=m.note_key WHERE m.choice=1 ORDER BY n.key LIMIT ? OFFSET ?`).all(book,seed.generation,seed.start_index,id,id,limit+1,offset);
+            return {records:rows.slice(0,limit).map(row=>({...dto(db,row,false),text:row.text})),hasMore:rows.length>limit};
         }
         if (c.action === "reading-window") {
             const book=identifier(c.bookKey), offset=c.offset??0, limit=c.limit??200;

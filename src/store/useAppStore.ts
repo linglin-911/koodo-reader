@@ -101,6 +101,7 @@ const initialReader = {
   noteKey: "",
   noteBindingId: "",
   annotationAppend: false,
+  annotationLayout: "none" as "none" | "chapter" | "range" | "query",
   originalText: "",
   originalSentence: "",
   quoteText: "",

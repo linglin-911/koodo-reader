@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "cases": 12,
+  "checks": [
+    "same-iframe coordinate resolves clicked chapter independently of viewport",
+    "horizontal selection menu and body-only quick editor",
+    "local/global selection preserves distinct tag IDs",
+    "atomic quick create failure and retry",
+    "append adds relationship without editing or duplicating entity",
+    "full-range automatic references open independent read-only detail",
+    "transitive/nested overlap includes off-click interval, dedupes and pages",
+    "compiled engine dotted cue retains source text",
+    "floating union close-first and Escape lifecycle",
+    "7700 chapters mount at most 12 controls",
+    "new pure highlight rejected without deleting legacy records",
+    "shared width calculation reserves rail and panes"
+  ],
+  "userDatabaseOpened": false,
+  "normalCompiledEngine": true,
+  "preview": "C:\\Users\\lenovo\\AppData\\Local\\Temp\\koodo-annotation-quick-3milR4\\annotation-ui.png",
+  "editorPreview": "C:\\Users\\lenovo\\AppData\\Local\\Temp\\koodo-annotation-quick-3milR4\\annotation-editor.png",
+  "nativePreview": "C:\\Users\\lenovo\\AppData\\Local\\Temp\\koodo-annotation-quick-3milR4\\annotation-native.png",
+  "rendererErrors": []
+}

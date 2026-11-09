@@ -143,6 +143,8 @@ export interface RecoveryResults {
   hasMore: boolean;
 }
 export const AnnotationService = {
+  overlap: (filter:{bookKey:string;bindingId:string;sourceTicket?:string;offset?:number;limit?:number}) =>
+    annotationCommand<{records:AnnotationEntity[];hasMore:boolean}>("overlap",filter),
   recoveryResults: (bookKey:string,offset=0) => annotationCommand<RecoveryResults>("recovery-results",{bookKey,offset,limit:50}),
   readingWindow: (data: {bookKey:string;format:"TXT";sourceTicket?:string;blocks:AnnotationWindowBlock[];offset:number;afterId?:string}, context:DatabaseReadContext={}) =>
     annotationCommand<{records:ReadingAnnotation[];related:unknown[];hasMore:boolean;nextCursor?:string}>("reading-window",{...data,limit:200},context),
