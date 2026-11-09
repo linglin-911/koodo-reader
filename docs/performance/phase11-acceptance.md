@@ -1,10 +1,10 @@
 # 阶段 11 合成压力验收记录（2026-11-08至09）
 
-当前需求和结项状态以 [PROJECT_REQUIREMENTS.md](../PROJECT_REQUIREMENTS.md) 为准。本页保留本轮测量口径、原始数值和门槛映射，**不能据此宣布完整实书/人工矩阵通过**。
+当前优先级和结项状态以 [项目总览](../PROJECT_REQUIREMENTS.md) 为准；原阶段 11 技术计划与 7.1 完整验收门槛见 [TXT 技术细节文档](../TXT_IMPLEMENTATION_DETAILS.md)。本页保留本轮测量口径、原始数值和门槛映射，**不能据此宣布完整实书/人工矩阵通过**。
 
 ## 基线、样本与重跑
 
-- 起始工作区均干净，Koodo `b4179bc0` / Kookit `65eea0f`，均在 `diagnostics/phase1-logging`；在线远端头与本地 tracking ref 一致，分别领先18 / 11个提交，测试当时未拉取覆盖、尚未推送；2026-11-09后续同步约定见主需求文档2.1。Kookit 本轮实现提交 `260525a` + `5c4928d`，桌面产物已同步普通 Koodo 入口，扫描器字节未变化。
+- 起始工作区均干净，Koodo `b4179bc0` / Kookit `65eea0f`，均在 `diagnostics/phase1-logging`；在线远端头与本地 tracking ref 一致，分别领先18 / 11个提交，测试当时未拉取覆盖、尚未推送；2026-11-09当时的同步约定见 [技术细节文档第 2.1 节](../TXT_IMPLEMENTATION_DETAILS.md#21-当前功能基线与资料入口)。Kookit 本轮实现提交 `260525a` + `5c4928d`，桌面产物已同步普通 Koodo 入口，扫描器字节未变化。
 - Windows `10.0.26200`、AMD Ryzen 7 5800H、OS 报告约 39.9GiB 内存；Electron 35.7.5 / 内嵌 Node 22.16.0，外部 Node 26.13.0。脚本关闭硬件加速并使用隐藏窗口。
 - 所有原文、实体和数据库均由 `mkdtemp` 在临时目录生成。测试不打开真实用户库、不提交小说、用户摘录或用户日志；保留生成器、确定种子 `phase11-0x11c0ffee-v1`、最终代码 SHA-256 和原始数值。
 - 主性能样本恰为 76,083,283 bytes / 7,700 个标题章，正文含中文、emoji、CRLF 和 HTML 特殊字符。密集绑定位于首行 ASCII 范围；Unicode 精确选区另由原生交互/编码测试验证。数据安全压力使用约 4MiB / 7,700 章的独立样本。
