@@ -1251,5 +1251,6 @@
   "Selected source text": "所选原文",
   "No annotations in this chapter": "本章暂无批注",
   "Annotation details": "批注详情",
-  "Delete annotation?": "删除此批注及其绑定位置？"
+  "Delete annotation?": "删除此批注及其绑定位置？",
+  "Source preview": "单章原文预览"
 }
