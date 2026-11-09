@@ -346,10 +346,8 @@ const NavigationPanel = (props: NavigationPanelProps) => {
     <div
       className="navigation-panel"
       style={{
-        backgroundColor: isNavLocked ? backgroundColor : "",
-        color: isNavLocked
-          ? ConfigService.getReaderConfig("textColor")
-          : "",
+        backgroundColor: backgroundColor || undefined,
+        color: ConfigService.getReaderConfig("textColor") || undefined,
       }}
       onMouseLeave={(event) => {
         if (state.searchState && state.searchState !== "done") {

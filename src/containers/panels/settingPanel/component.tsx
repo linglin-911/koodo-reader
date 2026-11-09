@@ -173,10 +173,8 @@ const SettingPanel = () => {
     <div
       className="setting-panel-parent"
       style={{
-        backgroundColor: isSettingLocked ? backgroundColor : "",
-        color: isSettingLocked
-          ? ConfigService.getReaderConfig("textColor")
-          : "",
+        backgroundColor: backgroundColor || undefined,
+        color: ConfigService.getReaderConfig("textColor") || undefined,
       }}
     >
       <span

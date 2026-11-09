@@ -53,7 +53,6 @@ const Reader = () => {
   const currentBook = useAppStore((s) => s.book.currentBook);
   const htmlBook = useAppStore((s) => s.reader.htmlBook);
   const readerMode = useAppStore((s) => s.reader.readerMode);
-  const backgroundColor = useAppStore((s) => s.reader.backgroundColor);
   const isNavLocked = useAppStore((s) => s.reader.isNavLocked);
   const isConvertOpen = useAppStore((s) => s.reader.isConvertOpen);
   const isScaleOpen = useAppStore((s) => s.reader.isScaleOpen);
@@ -380,10 +379,6 @@ const Reader = () => {
         <div
           id="reader-settings-panel"
           className="setting-panel-container"
-          style={{
-            backgroundColor: backgroundColor || undefined,
-            color: ConfigService.getReaderConfig("textColor") || undefined,
-          }}
           hidden={!state.isOpenRightPanel}
           inert={!state.isOpenRightPanel}
         >
@@ -392,10 +387,6 @@ const Reader = () => {
         <div
           id="reader-navigation-panel"
           className="navigation-panel-container"
-          style={{
-            backgroundColor: backgroundColor || undefined,
-            color: ConfigService.getReaderConfig("textColor") || undefined,
-          }}
           hidden={!state.isOpenLeftPanel}
           inert={!state.isOpenLeftPanel}
         >

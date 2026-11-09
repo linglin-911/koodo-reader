@@ -2,14 +2,11 @@ import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import "./pageWidget.css";
 import { ConfigService } from "../../assets/lib/kookit-extra-browser.min";
-import { Trans } from "react-i18next";
 import { getBatchTrans, getWordDefinitions } from "../../utils/request/reader";
 import {
   detectLocalLanguage,
   getFullTranslationTarget,
-  isFixedLayoutComic,
   isRateLimitedResult,
-  isReadingRawPDF,
 } from "../../utils/common";
 import toast from "react-hot-toast";
 import { isElectron } from "react-device-detect";
@@ -20,8 +17,6 @@ import { useAppStore } from "../../store/useAppStore";
 
 export interface PageWidgetState {
   isSingle: boolean;
-  prevPage: number;
-  nextPage: number;
   currentTime: string;
   percentage: string;
   ignoreNextPageChange: boolean;
@@ -45,7 +40,6 @@ const PageWidget = ({ isPanelLayout = false }: PageWidgetProps) => {
   const isSettingLocked = isPanelLayout ? false : storedSettingLocked;
   const isDockedRight = useAppStore((s) => s.reader.isDockedRight);
   const backgroundColor = useAppStore((s) => s.reader.backgroundColor);
-  const isHideFooter = useAppStore((s) => s.reader.isHideFooter);
   const isHideHeader = useAppStore((s) => s.reader.isHideHeader);
   const isShowPageBorder = useAppStore((s) => s.reader.isShowPageBorder);
   const textOrientation = useAppStore((s) => s.reader.textOrientation);
@@ -67,8 +61,6 @@ const PageWidget = ({ isPanelLayout = false }: PageWidgetProps) => {
 
   const [state, setState] = useState<PageWidgetState>({
     isSingle: readerMode !== "double",
-    prevPage: 0,
-    nextPage: 0,
     currentTime: getFormattedTime(),
     percentage: "",
     ignoreNextPageChange: false,
@@ -246,33 +238,16 @@ const PageWidget = ({ isPanelLayout = false }: PageWidgetProps) => {
     return next;
   };
 
-  const handlePageNum = async (rendition) => {
-    let pageInfo = await rendition.getProgress();
-    if (!pageInfo) {
-      return;
-    }
-    if (isReadingRawPDF(currentBook) || isFixedLayoutComic(currentBook)) {
-      setState((prev) => ({
-        ...prev,
-        prevPage: pageInfo.currentPage,
-        nextPage: pageInfo.currentPage + 1,
-        percentage: pageInfo.percentage,
-      }));
-      return;
-    }
-    setState((prev) => ({
-      ...prev,
-      prevPage: prev.isSingle
-        ? pageInfo.currentPage
-        : pageInfo.currentPage * 2 - 1,
-      nextPage: prev.isSingle ? pageInfo.currentPage : pageInfo.currentPage * 2,
-      percentage: pageInfo.percentage,
-    }));
+  // The footer no longer displays or estimates page counts. Progress uses
+  // the actual reading position, independently of the current page layout.
+  const handleReadingPercentage = async (rendition) => {
+    const percentage = String(rendition.getPosition()?.percentage ?? "");
+    setState((prev) => prev.percentage === percentage ? prev : { ...prev, percentage });
   };
 
   const methodsRef = useRef<any>(null);
   methodsRef.current = {
-    handlePageNum,
+    handleReadingPercentage,
     handleBatchTranslation,
     handleWordDefinition,
   };
@@ -299,9 +274,9 @@ const PageWidget = ({ isPanelLayout = false }: PageWidgetProps) => {
     if (nextHtmlBook && nextHtmlBook !== prevHtmlBook && !prevHtmlBook) {
       const rendition = nextHtmlBook.rendition;
       (async () => {
-        await methodsRef.current.handlePageNum(rendition);
+        await methodsRef.current.handleReadingPercentage(rendition);
         rendition.on("page-changed", async () => {
-          await methodsRef.current.handlePageNum(rendition);
+          await methodsRef.current.handleReadingPercentage(rendition);
           await methodsRef.current.handleBatchTranslation(rendition);
           if (ignoreNextPageChange.current) {
             setIgnoreNextPageChange(false);
@@ -358,7 +333,7 @@ const PageWidget = ({ isPanelLayout = false }: PageWidgetProps) => {
           handleFetchNotes();
         });
         rendition.on("rendered", async () => {
-          await methodsRef.current.handlePageNum(rendition);
+          await methodsRef.current.handleReadingPercentage(rendition);
           await methodsRef.current.handleBatchTranslation(rendition);
           await methodsRef.current.handleWordDefinition(rendition);
         });
@@ -391,14 +366,6 @@ const PageWidget = ({ isPanelLayout = false }: PageWidgetProps) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpPosition]);
-
-  // 从右往左翻页时双页版面镜像，footer 页码位置同步交换
-  const isRevertDirection =
-    ConfigService.getReaderConfig("revertDirection") === "yes" &&
-    textOrientation !== "vertical";
-  const isSwappedPage = isRevertDirection && !state.isSingle;
-  const leftPage = isSwappedPage ? state.nextPage : state.prevPage;
-  const rightPage = isSwappedPage ? state.prevPage : state.nextPage;
 
   return (
     <>
@@ -462,37 +429,6 @@ const PageWidget = ({ isPanelLayout = false }: PageWidgetProps) => {
                   : ""}
               </span>
             </>
-          )}
-        </div>
-        <div className="footer-container">
-          {!isHideFooter && leftPage > 0 && (
-            <p
-              className="background-page-left"
-              style={
-                state.isSingle
-                  ? {
-                      left: "calc(50% - 270px)",
-                    }
-                  : {}
-              }
-            >
-              <Trans i18nKey="Book page" count={leftPage}>
-                Page
-                {{
-                  count: leftPage,
-                }}
-              </Trans>
-            </p>
-          )}
-          {!isHideFooter && rightPage > 0 && !state.isSingle && (
-            <p className="background-page-right">
-              <Trans i18nKey="Book page" count={rightPage}>
-                Page
-                {{
-                  count: rightPage,
-                }}
-              </Trans>
-            </p>
           )}
         </div>
         <>{isShowBookmark ? <div className="bookmark"></div> : null}</>
