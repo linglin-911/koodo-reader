@@ -97,7 +97,6 @@ let lock = false; //prevent from clicking too fasts
 const gestureBoundDocs = new WeakSet<Document>();
 
 const Viewer = (props: ViewerProps) => {
-  const annotationLayout = useAppStore(s=>s.reader.annotationLayout);
   const currentBook = useAppStore((s) => s.book.currentBook);
   const htmlBook = useAppStore((s) => s.reader.htmlBook);
   const isNavLocked = useAppStore((s) => s.reader.isNavLocked);
@@ -197,7 +196,6 @@ const Viewer = (props: ViewerProps) => {
   const openVersionRef = useRef(0);
   const rerenderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevWidthPropsRef = useRef({
-    annotationLayout,
     margin,
     scale,
     readerMode,
@@ -998,17 +996,6 @@ const Viewer = (props: ViewerProps) => {
         updateState({ rect });
       }, listenerOptions);
       doc.addEventListener("contextmenu", (event) => {
-        if (isElectron && propsRef.current.currentBook.format === "TXT") {
-          event.preventDefault();
-          const source = renditionRef.current;
-          const chapter = source?.getTxtChapterAtPoint?.(event.clientX,event.clientY);
-          if (!chapter) return;
-          const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
-          const binding = {format:"TXT", sourceTicket:source.txtIndexStore?.sourceTicket, chapterIndex:chapter.index, chapterId:chapter.chapterId, endChapterIndex:chapter.index, endChapterId:chapter.chapterId};
-          propsRef.current.handleOpenMenu(false);
-          window.dispatchEvent(new CustomEvent("koodo:chapter-context",{detail:{binding,x:event.clientX+(frame?.left||0),y:event.clientY+(frame?.top||0)}}));
-          return;
-        }
         if (isPaginatedBook(propsRef.current.currentBook)) {
           let ownerDoc = (event.target as HTMLElement).ownerDocument;
           let targetIframe = ownerDoc?.defaultView?.frameElement;
@@ -1110,7 +1097,6 @@ const Viewer = (props: ViewerProps) => {
 
   useEffect(() => {
     const nextProps = {
-      annotationLayout,
       margin,
       scale,
       readerMode,
@@ -1122,7 +1108,6 @@ const Viewer = (props: ViewerProps) => {
     const prevProps = prevWidthPropsRef.current;
     prevWidthPropsRef.current = nextProps;
     if (
-      nextProps.annotationLayout !== prevProps.annotationLayout ||
       nextProps.margin !== prevProps.margin ||
       nextProps.scale !== prevProps.scale ||
       nextProps.readerMode !== prevProps.readerMode ||

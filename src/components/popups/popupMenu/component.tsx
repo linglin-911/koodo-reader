@@ -1,5 +1,3 @@
-import { openQuickAnnotation } from "../../annotations/readerEvents";
-import { isElectron } from "react-device-detect";
 import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import "./popupMenu.css";
@@ -29,8 +27,8 @@ export interface PopupMenuProps {
 
 declare var window: any;
 
-const MENU_WIDTH = isElectron ? 430 : 252;
-const MENU_HEIGHT = 58;
+const MENU_WIDTH = 252;
+const MENU_HEIGHT = 141;
 const highlightUtil: any = new HighlightUtil(ConfigService);
 
 const PopupMenu = (props: PopupMenuProps) => {
@@ -157,8 +155,7 @@ const PopupMenu = (props: PopupMenuProps) => {
       return;
     }
 
-    const configuredAction = ConfigService.getReaderConfig("selectAction");
-    const selectAction = isElectron && configuredAction === "highlight" ? "note" : configuredAction;
+    const selectAction = ConfigService.getReaderConfig("selectAction");
     if (selectAction && selectAction !== "") {
       handleSelectAction(selectAction, sel);
       return;
@@ -201,7 +198,6 @@ const PopupMenu = (props: PopupMenuProps) => {
   };
 
   const handleSelectAction = async (action: string, _sel: Selection) => {
-    if(isElectron && ["note","highlight","add-to-small"].includes(action)){openQuickAnnotation({kind:"small",selection:true,append:action==="add-to-small"});return;}
     const text = getSelection(currentBook);
     if (!text) return;
     if (
@@ -285,7 +281,7 @@ const PopupMenu = (props: PopupMenuProps) => {
         <div
           className="popup-color-box"
           style={
-            !isElectron && menuMode === "menu" &&
+            menuMode === "menu" &&
             !isFixedLayoutBook(currentBook)
               ? {}
               : { display: "none" }

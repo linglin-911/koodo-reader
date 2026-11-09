@@ -560,10 +560,6 @@ app
           const bad = structuredClone(dump);
           bad.notes[0].notes = "overwrite";
           bad.notes.push({ ...bad.notes[0], key: "new-but-rollback" });
-          // Keep the v2 tag graph valid so this still tests a conflicting body,
-          // rather than failing earlier on the newly copied entity's graph.
-          bad.tagRelations.push(...bad.tagRelations.filter(r => r.note_key === bad.notes[0].key)
-            .map(r => ({...r,note_key:"new-but-rollback"})));
           await assert.rejects(
             () => call("import", { backup: bad }, restored),
             /conflict/
@@ -608,7 +604,7 @@ app
           );
           assert.equal(result.ok, true);
           const manifest = result.configFiles.find(
-            (f) => f.name === `config/annotations.v${dump.version}.json`
+            (f) => f.name === "config/annotations.v1.json"
           );
           assert.ok(manifest);
           await call(

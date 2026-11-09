@@ -34,13 +34,10 @@ export async function createHighlight(params: DigestParams): Promise<void> {
 
   if (!htmlBook) return;
   if (isElectron) {
-    const {openQuickAnnotation}=await import("../../components/annotations/readerEvents");
-    openQuickAnnotation({kind:"small",selection:true});return;
-    /* UI-2: legacy pure-highlight creation is replaced by the body editor.
     const binding=await captureAnnotation(currentBook,htmlBook.rendition,chapterDocIndex,chapter,color);
     await AnnotationService.create({bookKey:currentBook.key,kind:"small",notes:"",tag:[]},binding);
     await restoreAnnotations(currentBook,htmlBook.rendition,chapterDocIndex);
-    onSuccess?.();return; */
+    onSuccess?.();return;
   }
 
   let bookKey = currentBook.key;

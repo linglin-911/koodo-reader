@@ -161,8 +161,6 @@ Kookit `rollup.config.js` 默认同时构建桌面与移动目标。阶段 6 起
 
 ## 5. 三类批注与绑定
 
-> 2026-11-09 UI-1 追加：标签身份与引用已在原 notes.db 升级为 annotation_schema v2；notes.tag 为兼容名称投影，新增 annotation_tags/note_tags 为权威数据。v2备份与v1导入、局部标签事务及隔离验证见[标签实施记录](ANNOTATION_TAG_IMPLEMENTATION.md)。本页下方阶段4/11中的v1描述保留为当时实现记录，不代表当前标签Schema仍为v1；TXT索引和恢复版本域未变。
-
 三类实体独立，分类/内容各自管理；可按章节互查参考，不建立自动父子关系，也不因其他类型删除而改变正文。大批注后续提供参考资料区 + 正文编辑区。
 
 | 类型 | 数据与入口 |

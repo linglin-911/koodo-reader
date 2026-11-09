@@ -3,8 +3,6 @@ const requireChange = result => { if (result.changes !== 1)
     throw new Error("Binding changed; reload before editing"); return result; };
 // Formal annotation data. All mutations use this controlled notes.db interface.
 const fs = require("node:fs"), path = require("node:path"), os = require("node:os"), crypto = require("node:crypto");
-const { migrateTags, tagRefs, resolveTagIds, replaceTagIds, touchTags, removeLegacyTag,
-    runTagCommand, backupTags, preflightTagImport, importTagRows } = require("./annotation-tags");
 const migrations = new WeakMap();
 const TABLES = Object.freeze(Object.assign(Object.create(null), {
     small: "note_bindings",
@@ -23,11 +21,6 @@ const ACTIONS = new Set([
     "create",
     "delete",
     "remove-tag",
-    "tag-seed-legacy",
-    "tag-list",
-    "tag-create",
-    "tag-rename",
-    "tag-delete",
     "style",
     "unbind-all",
     "unbind",
@@ -35,7 +28,6 @@ const ACTIONS = new Set([
     "bind",
     "reading",
     "reading-window",
-    "overlap",
     "recovery-results",
 ]);
 const validString = (value, max = 1024) => typeof value === "string" && value.length <= max && !value.includes("\0");
@@ -78,13 +70,8 @@ const ensureAnnotationSchema = (db) => {
             .prepare("SELECT 1 FROM sqlite_master WHERE name='annotation_schema' AND type='table'")
             .get();
         if (exists) {
-            const version = db.prepare("SELECT version FROM annotation_schema").get()?.version;
-            if (![1, 2].includes(version)) throw new Error("Unsupported annotation schema");
-            if (version === 1) {
-                if (db.name !== ":memory:")
-                    await db.backup(db.name + ".pre-annotations-v2-" + crypto.randomUUID() + ".bak");
-                migrateTags(db);
-            }
+            if (db.prepare("SELECT version FROM annotation_schema").get()?.version !== 1)
+                throw new Error("Unsupported annotation schema");
             ensureAnnotationIndexes(db);
             return;
         }
@@ -116,7 +103,6 @@ const ensureAnnotationSchema = (db) => {
                     db.exec(`CREATE UNIQUE INDEX ${table}_one ON ${table}(note_key) WHERE status!='unbound'`);
             }
         })();
-        migrateTags(db);
         ensureAnnotationIndexes(db);
     })();
     migrations.set(db, pending);
@@ -181,11 +167,8 @@ const annotationDto = (db, row, details = true, headers = new Map()) => {
     return {
         ...row,
         tag: JSON.parse(row.tag),
-        tagRefs: tagRefs(db, row.key),
         date: JSON.parse(row.date),
         bindings: all,
-        bindingCount: db.prepare(`SELECT count(*) AS n FROM ${TABLES[row.kind]} WHERE note_key=? AND status!='unbound'`).get(row.key).n,
-        chapterLabels: db.prepare(`SELECT DISTINCT COALESCE(json_extract(anchor_json,'$.chapter.label'),json_extract(anchor_json,'$.start.label'),'') AS label FROM ${TABLES[row.kind]} WHERE note_key=? AND status!='unbound' LIMIT 3`).all(row.key).map(item=>item.label),
         chapter: snapshot?.label || "",
         chapterIndex: first?.start_index ?? -1,
         text: first?.quote || row.text || "",
@@ -195,28 +178,20 @@ const annotationDto = (db, row, details = true, headers = new Map()) => {
         color: first?.style || "background-#FEF3CD",
     };
 };
-const exportData = (db) => db.transaction(() => {
-    const version = db.prepare("SELECT version FROM annotation_schema").get()?.version;
-    if (![1, 2].includes(version)) throw new Error("Unsupported annotation schema");
-    return {
-        format: "koodo-annotations",
-        version,
-        ...(version === 2 ? {
-            tags: db.prepare("SELECT * FROM annotation_tags ORDER BY id").all(),
-            tagRelations: db.prepare("SELECT * FROM note_tags ORDER BY note_key,position,tag_id").all(),
-        } : {}),
-        notes: db.prepare("SELECT * FROM notes ORDER BY key").all(),
-        bindings: Object.fromEntries(Object.entries(TABLES).map(([kind, table]) => [
-            kind,
-            db.prepare(`SELECT * FROM ${table} ORDER BY id`).all(),
-        ])),
-        drawings: db
-            .prepare("SELECT 1 FROM sqlite_master WHERE name='drawing_notes'")
-            .get()
-            ? db.prepare("SELECT * FROM drawing_notes").all()
-            : [],
-    };
-})();
+const exportData = (db) => db.transaction(() => ({
+    format: "koodo-annotations",
+    version: 1,
+    notes: db.prepare("SELECT * FROM notes ORDER BY key").all(),
+    bindings: Object.fromEntries(Object.entries(TABLES).map(([kind, table]) => [
+        kind,
+        db.prepare(`SELECT * FROM ${table} ORDER BY id`).all(),
+    ])),
+    drawings: db
+        .prepare("SELECT 1 FROM sqlite_master WHERE name='drawing_notes'")
+        .get()
+        ? db.prepare("SELECT * FROM drawing_notes").all()
+        : [],
+}))();
 const parseJson = (value) => {
     if (!validString(value, 2 * 1024 * 1024))
         throw new Error("Invalid annotation locator");
@@ -246,7 +221,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
     const importData = (db, data) => {
         if (!data ||
             data.format !== "koodo-annotations" ||
-            ![1, 2].includes(data.version) ||
+            data.version !== 1 ||
             !Array.isArray(data.notes) ||
             data.notes.length > 1000000 ||
             !data.bindings)
@@ -268,7 +243,6 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 ![n.created_at, n.updated_at].every(Number.isSafeInteger))
                 throw new Error("Invalid backup version");
         }
-        const tagBackup = backupTags(data);
         const ids = new Set();
         for (const [kind, table] of Object.entries(TABLES)) {
             const list = data.bindings[kind];
@@ -319,14 +293,12 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
         return db.transaction(() => {
             // Preflight every conflict before any mutation. A restore must not silently
             // overwrite newer formal bodies, bindings or unbind operations.
-            const existingNotes = [];
             for (const n of data.notes) {
                 const current = db
                     .prepare("SELECT * FROM notes WHERE key=?")
                     .get(n.key);
                 if (current && JSON.stringify(current) !== JSON.stringify(n))
                     throw new Error("Annotation restore conflict");
-                if (current) existingNotes.push(n.key);
             }
             for (const [kind, table] of Object.entries(TABLES))
                 for (const b of data.bindings[kind]) {
@@ -339,11 +311,9 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                             JSON.stringify({ ...b, status: pendingStatus(b) }))
                         throw new Error("Binding restore conflict");
                 }
-            preflightTagImport(db, tagBackup, existingNotes);
-            const insertNote = db.prepare("INSERT OR IGNORE INTO notes(key,bookKey,kind,title,notes,tag,date,created_at,updated_at,version) VALUES(@key,@bookKey,@kind,@title,@notes,@tag,@date,@created_at,@updated_at,@version)");
+            const insertNote = db.prepare("INSERT OR IGNORE INTO notes VALUES(@key,@bookKey,@kind,@title,@notes,@tag,@date,@created_at,@updated_at,@version)");
             for (const n of data.notes)
                 insertNote.run(n);
-            importTagRows(db, tagBackup);
             for (const [kind, table] of Object.entries(TABLES))
                 for (const b of data.bindings[kind]) {
                     // Retain original snapshots/quotes. Imported TXT anchors await explicit
@@ -378,7 +348,6 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
         metrics.setAction(c.action); // Only whitelisted action names may enter logs.
         const db = await get(c.storagePath, metrics);
         const describeChapter = (...args) => metrics.asyncStage("sourceValidationDurationMs", () => describeTxt(...args));
-        if (c.action.startsWith("tag-")) return runTagCommand(db, c);
         const headers=new Map();
         const dto = (db, row, details = true) => metrics.convert(() => annotationDto(db, row, details,headers));
         if (c.action === "recovery-results") return require("./txt-reconcile").recoveryResults(db,identifier(c.bookKey),c.offset??0,c.limit??50);
@@ -475,7 +444,6 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 where.push("n.kind=?");
                 args.push(c.kind);
             }
-            if(c.kinds){if(!Array.isArray(c.kinds)||!c.kinds.length||c.kinds.some(kind=>!TABLES[kind]))throw Error("Invalid annotation kinds");where.push(`n.kind IN (${c.kinds.map(()=>"?").join(",")})`);args.push(...c.kinds);}
             if (c.tab === "highlight")
                 where.push("n.kind='small' AND n.notes=''");
             if (c.tab === "note")
@@ -486,15 +454,13 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 const current = await describeChapter(owner, c.sourceTicket, c.chapterIndex, c.chapterId, false);
                 if (current.bookId !== c.bookKey)
                     throw new Error("Cross-book related query");
-                let last=current;
-                if(c.endChapterIndex!==undefined){last=await describeChapter(owner,c.sourceTicket,c.endChapterIndex,c.endChapterId,false);if(last.bookId!==current.bookId||last.generation!==current.generation||c.endChapterIndex<c.chapterIndex)throw Error("Invalid related range");}
                 where.push("(" +
                     Object.values(TABLES)
                         .map((table) => `EXISTS(SELECT 1 FROM ${table} b WHERE b.note_key=n.key AND b.status='active' AND b.generation=? AND b.start_index<=? AND b.end_index>=?)`)
                         .join(" OR ") +
                     ")");
                 for (const table of Object.values(TABLES))
-                    args.push(current.generation, c.endChapterIndex??c.chapterIndex, c.chapterIndex);
+                    args.push(current.generation, c.chapterIndex, c.chapterIndex);
             }
             if (c.keyword) {
                 requireString(c.keyword, 2048);
@@ -502,12 +468,8 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 args.push(c.keyword, c.keyword, c.keyword);
             }
             for (const tag of c.tags ? tags(c.tags) : []) {
-                where.push("EXISTS(SELECT 1 FROM note_tags r JOIN annotation_tags t ON t.id=r.tag_id WHERE r.note_key=n.key AND t.name=?)");
+                where.push("EXISTS(SELECT 1 FROM json_each(n.tag) WHERE value=?)");
                 args.push(tag);
-            }
-            for (const tagId of c.tagIds ? tags(c.tagIds) : []) {
-                where.push("EXISTS(SELECT 1 FROM note_tags r WHERE r.note_key=n.key AND r.tag_id=?)");
-                args.push(identifier(tagId));
             }
             const direction = c.order === "ASC" ? "ASC" : "DESC";
             const position = c.sort === "position";
@@ -549,23 +511,25 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
             const key = n.key ? identifier(n.key) : crypto.randomUUID(), book = identifier(n.bookKey), body = requireString(n.notes || "", 16 * 1024 * 1024), title = requireString(n.title || "", 4096), tag = JSON.stringify(tags(n.tag || [])), now = Date.now();
                 return {n,key,book,body,title,tag,now};
             });
-            db.transaction(() => {
-                const old = db.prepare("SELECT * FROM notes WHERE key=?").get(key);
-                if (old && (n.version !== old.version || old.bookKey !== book || old.kind !== n.kind))
+            const old = db.prepare("SELECT * FROM notes WHERE key=?").get(key);
+            if (old &&
+                (n.version !== old.version ||
+                    old.bookKey !== book ||
+                    old.kind !== n.kind))
+                throw new Error("Annotation changed; reload before saving");
+            if (old) {
+                const result = db
+                    .prepare("UPDATE notes SET notes=?,title=?,tag=?,updated_at=?,version=version+1 WHERE key=? AND version=?")
+                    .run(body, title, tag, now, key, n.version);
+                if (result.changes !== 1)
                     throw new Error("Annotation changed; reload before saving");
-                if(!old&&n.kind==="small"&&!body.trim())throw Error("Small annotations require body text");
-                const selected = resolveTagIds(db, n, old);
-                if (old) {
-                    requireChange(db.prepare("UPDATE notes SET notes=?,title=?,tag=?,updated_at=?,version=version+1 WHERE key=? AND version=?")
-                        .run(body, n.title === undefined ? old.title : title, tag, now, key, n.version));
-                } else {
-                    db.prepare("INSERT INTO notes(key,bookKey,kind,title,notes,tag,date,created_at,updated_at,version) VALUES(?,?,?,?,?,?,?,?,?,1)")
-                        .run(key, book, n.kind, title, body, tag, JSON.stringify({
-                            year: new Date().getFullYear(), month: new Date().getMonth() + 1, day: new Date().getDate(),
-                        }), now, now);
-                }
-                replaceTagIds(db, key, selected);
-            })();
+            }
+            else
+                db.prepare("INSERT INTO notes VALUES(?,?,?,?,?,?,?,?,?,1)").run(key, book, n.kind, title, body, tag, JSON.stringify({
+                    year: new Date().getFullYear(),
+                    month: new Date().getMonth() + 1,
+                    day: new Date().getDate(),
+                }), now, now);
             return dto(db, db.prepare("SELECT * FROM notes WHERE key=?").get(key));
         }
         if (c.action === "delete") {
@@ -579,7 +543,6 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                         throw new Error("Annotation changed; reload before deleting");
                     for (const table of Object.values(TABLES))
                         db.prepare(`DELETE FROM ${table} WHERE note_key=?`).run(key);
-                    touchTags(db, tagRefs(db, key).map(tag => tag.id));
                     db.prepare("DELETE FROM notes WHERE key=?").run(key);
                 })();
             }
@@ -591,7 +554,16 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
             const tag = requireString(c.tag, 256), kind = c.kind || "small";
             if (!TABLES[kind])
                 throw new Error("Invalid tag kind");
-            return removeLegacyTag(db, tag, kind);
+            db.transaction(() => {
+                for (const row of db
+                    .prepare("SELECT key,tag FROM notes WHERE kind=?")
+                    .all(kind)) {
+                    const current = JSON.parse(row.tag);
+                    if (current.includes(tag))
+                        db.prepare("UPDATE notes SET tag=?,version=version+1,updated_at=? WHERE key=?").run(JSON.stringify(current.filter((value) => value !== tag)), Date.now(), row.key);
+                }
+            })();
+            return { updated: true };
         }
         if (c.action === "style") {
             const row = db
@@ -655,7 +627,6 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
         }
         if (c.action === "bind" || c.action === "create") {
             const creating = c.action === "create";
-            if(creating && c.note?.kind==="small" && !String(c.note.notes||"").trim())throw Error("Small annotations require body text");
             // Validate all user fields before touching formal data. Source reads
             // below also happen outside the transaction; publication is atomic.
             const note = creating ? metrics.input(() => {
@@ -753,9 +724,7 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                     throw new Error("Index changed; reopen before binding");
                 if (creating) {
                     if (c.replaceId) throw new Error("Cannot replace a binding while creating");
-                    const selected = resolveTagIds(db, c.note, null);
                     db.prepare("INSERT INTO notes(key,bookKey,kind,title,notes,tag,date,created_at,updated_at,version) VALUES(@key,@bookKey,@kind,@title,@notes,@tag,@date,@created_at,@updated_at,@version)").run(note);
-                    replaceTagIds(db, note.key, selected);
                 }
                 if (c.replaceId) {
                     const old = db
@@ -770,27 +739,6 @@ const createAnnotationService = ({ getConnection, describeTxt, Database, loadReg
                 db.prepare(`INSERT INTO ${table} VALUES(${Array(16).fill("?").join(",")},1,NULL)`).run(id, note.key, note.bookKey, input.format, generation, chapterId, startIndex, endIndex, "active", JSON.stringify(anchor), quote, prefix, suffix, relativeStart, relativeEnd, requireString(input.style || "background-#FEF3CD", 256));
             })();
             return dto(db, db.prepare("SELECT * FROM notes WHERE key=?").get(note.key));
-        }
-        if(c.action === "overlap") {
-            const book=identifier(c.bookKey),id=identifier(c.bindingId),limit=c.limit??50,offset=c.offset??0;
-            if(!Number.isSafeInteger(limit)||limit<1||limit>200||!Number.isSafeInteger(offset)||offset<0||offset>10000000)throw Error("Invalid overlap page");
-            const seed=db.prepare("SELECT * FROM note_bindings WHERE id=? AND book_id=? AND status='active'").get(id,book);
-            if(!seed)throw Error("Annotation position unavailable");
-            if(seed.format!=="TXT") { const value=dto(db,db.prepare("SELECT key,bookKey,kind,title,substr(notes,1,160) AS notes,tag,date,version FROM notes WHERE key=?").get(seed.note_key),false);return {records:offset?[]:[value],hasMore:false}; }
-            const current=await describeChapter(owner,c.sourceTicket,seed.start_index,seed.chapter_id,false);
-            if(current.bookId!==book||current.generation!==seed.generation)throw Error("Stale annotation position");
-            // Interval islands use the preceding running maximum, not just the
-            // preceding interval. This includes nested and transitive overlaps,
-            // including relationships beyond the currently mounted TXT blocks.
-            const rows=db.prepare(`WITH ordered AS (
-              SELECT id,note_key,quote,relative_start,relative_end,MAX(relative_end) OVER(ORDER BY relative_start,relative_end,id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS previous_end
-              FROM note_bindings WHERE book_id=? AND generation=? AND start_index=? AND status='active'
-            ), islands AS (
-              SELECT *,SUM(CASE WHEN previous_end IS NULL OR relative_start>=previous_end THEN 1 ELSE 0 END) OVER(ORDER BY relative_start,relative_end,id) AS island FROM ordered
-            ), matches AS (
-              SELECT note_key,substr(quote,1,160) AS quote,ROW_NUMBER() OVER(PARTITION BY note_key ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END,relative_start,id) AS choice FROM islands WHERE island=(SELECT island FROM islands WHERE id=?)
-            ) SELECT n.key,n.bookKey,n.kind,n.title,substr(n.notes,1,160) AS notes,n.tag,n.date,n.version,m.quote AS text FROM matches m JOIN notes n ON n.key=m.note_key WHERE m.choice=1 ORDER BY n.key LIMIT ? OFFSET ?`).all(book,seed.generation,seed.start_index,id,id,limit+1,offset);
-            return {records:rows.slice(0,limit).map(row=>({...dto(db,row,false),text:row.text})),hasMore:rows.length>limit};
         }
         if (c.action === "reading-window") {
             const book=identifier(c.bookKey), offset=c.offset??0, limit=c.limit??200;

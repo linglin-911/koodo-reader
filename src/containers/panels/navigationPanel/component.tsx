@@ -1,4 +1,3 @@
-import {isElectron} from "react-device-detect";
 import { canJumpAnnotation } from "../../../utils/reader/annotationUtil";
 import { useEffect, useRef, useState } from "react";
 import "./navigationPanel.css";
@@ -183,7 +182,6 @@ const NavigationPanel = (props: NavigationPanelProps) => {
   };
 
   const handleChangeTab = (currentTab: string) => {
-    if(isElectron&&(currentTab==="notes"||currentTab==="highlights")){window.dispatchEvent(new Event("koodo:annotation-query"));return;}
     setState((prev) => ({ ...prev, currentTab }));
   };
 
@@ -460,7 +458,7 @@ const NavigationPanel = (props: NavigationPanelProps) => {
               </span>
               <span
                 className="book-bookmark-title"
-                style={isElectron?{display:"none"}:state.currentTab === "notes" ? {} : { opacity: 0.5 }}
+                style={state.currentTab === "notes" ? {} : { opacity: 0.5 }}
                 onClick={() => {
                   handleChangeTab("notes");
                 }}
@@ -469,7 +467,7 @@ const NavigationPanel = (props: NavigationPanelProps) => {
               </span>
               <span
                 className="book-bookmark-title"
-                style={isElectron?{display:"none"}:state.currentTab === "highlights" ? {} : { opacity: 0.5 }}
+                style={state.currentTab === "highlights" ? {} : { opacity: 0.5 }}
                 onClick={() => {
                   handleChangeTab("highlights");
                 }}

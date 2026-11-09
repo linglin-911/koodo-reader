@@ -1,5 +1,4 @@
-import { useAppStore } from "../store/useAppStore";
-import Plugin from "../models/Plugin";
+﻿import Plugin from "../models/Plugin";
 import { isElectron } from "react-device-detect";
 import CryptoJS from "crypto-js";
 import {
@@ -649,11 +648,6 @@ export const getPageWidth = (
   isSettingLocked: boolean,
   isFitPage: boolean = false
 ) => {
-  const rail = isElectron ? 48 : 0;
-  const layout = useAppStore.getState().reader.annotationLayout;
-  const workWidth = document.body.clientWidth - rail;
-  const reserved = layout === "range" ? workWidth * 2 / 3 : layout === "chapter" || layout === "query" ? workWidth / 3 : 0;
-  const availableWidth = Math.max(160, workWidth - reserved);
   // 页间距与 kookit 渲染引擎的 getSectionGap 保持一致：
   // 未设置时取 min(60, 宽度/12)，只能取偶数
   const getPageGapValue = (width: number) => {
@@ -675,31 +669,32 @@ export const getPageWidth = (
 
     return limit;
   };
-  const clampGeometry = (width:number, offset:string) => {
-    const boundedWidth=findValidMultiple(Math.max(80,Math.min(availableWidth-8,width)));
-    const boundedOffset=Math.max(0,Math.min(availableWidth-boundedWidth,parseFloat(offset)||0));
-    return {pageOffset:`${boundedOffset}px`,pageWidth:`${boundedWidth}px`};
-  };
   if (isFitPage && (readerMode === "scroll" || readerMode === "single")) {
     // 固定左右侧边栏时，页面只在剩余可用区域内铺满，避免被侧边栏遮挡
     const panelWidth = 300;
     let pageWidth =
-      availableWidth -
+      document.body.clientWidth -
       106 -
       (isNavLocked ? panelWidth : 0) -
       (isSettingLocked ? panelWidth : 0);
     let pageOffset = 50 + (isNavLocked ? panelWidth : 0) + "px";
-    return clampGeometry(pageWidth,pageOffset);
+    return {
+      pageOffset,
+      pageWidth: pageWidth + "px",
+    };
   }
 
   //缩放过高时按窗口宽度封顶
   if (
-    availableWidth * 0.6 * Math.abs(parseFloat(scale)) >
-    availableWidth
+    document.body.clientWidth * 0.6 * Math.abs(parseFloat(scale)) >
+    document.body.clientWidth
   ) {
-    let pageWidth = availableWidth - 106;
+    let pageWidth = document.body.clientWidth - 106;
     let pageOffset = 50 + "px";
-    return clampGeometry(pageWidth,pageOffset);
+    return {
+      pageOffset,
+      pageWidth: pageWidth + "px",
+    };
   }
 
   let pageOffset = "";
@@ -708,28 +703,35 @@ export const getPageWidth = (
     //页面宽度以 scale=1 的默认宽度（视口宽度 * 0.6）为基准等比例缩放，
     //使预设百分比与实际显示宽度成正比，避免低百分比时出现过窄页面
     let preWidth =
-      availableWidth * 0.6 * Math.abs(parseFloat(scale)) -
+      document.body.clientWidth * 0.6 * Math.abs(parseFloat(scale)) -
       (isNavLocked ? 300 : 0) -
       (isSettingLocked ? 300 : 0);
     let width = findValidMultiple(preWidth);
-    pageOffset = String(availableWidth / 2 + (isNavLocked ? 150 : 0) - (isSettingLocked ? 150 : 0) - width / 2) + "px";
+    pageOffset = `calc(50vw + ${isNavLocked ? 150 : 0}px - ${
+      isSettingLocked ? 150 : 0
+    }px - ${width / 2}px)`;
     pageWidth = width;
   } else if (readerMode === "double") {
     let width = findValidMultiple(
-      availableWidth -
+      document.body.clientWidth -
         2 * margin -
         80 -
         (isNavLocked ? 300 : 0) -
         (isSettingLocked ? 300 : 0)
     );
-    pageOffset = String(availableWidth / 2 + (isNavLocked ? 150 : 0) - (isSettingLocked ? 150 : 0) - width / 2) + "px";
+    pageOffset = `calc(50vw + ${isNavLocked ? 150 : 0}px - ${
+      isSettingLocked ? 150 : 0
+    }px - ${width / 2}px)`;
     pageWidth = width;
   }
-  if (pageWidth > availableWidth) {
-    pageWidth = availableWidth - 106;
+  if (pageWidth > document.body.clientWidth) {
+    pageWidth = document.body.clientWidth - 106;
     pageOffset = 50 + "px";
   }
-  return clampGeometry(pageWidth,pageOffset);
+  return {
+    pageOffset,
+    pageWidth: pageWidth + "px",
+  };
 };
 export const loadFontData = async () => {
   try {

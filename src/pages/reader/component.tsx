@@ -1,7 +1,3 @@
-import {useAnnotationPalette} from "../../components/annotations/usePalette";
-import ReaderAnnotationLayer from "../../components/annotations/readerLayer";
-import { ANNOTATION_QUERY } from "../../components/annotations/readerEvents";
-import "../../components/annotations/quick.css";
 import { useLatest } from "../../utils/hooks/useLatest";
 import { useTranslation } from "react-i18next";
 import React, { useEffect, useRef, useState } from "react";
@@ -80,7 +76,6 @@ const PANEL_OPEN_STATE: Record<
   right: "isOpenRightPanel",
 };
 const Reader = () => {
-  const annotationPalette=useAnnotationPalette(true);
   const currentBook = useAppStore((s) => s.book.currentBook);
   const htmlBook = useAppStore((s) => s.reader.htmlBook);
   const readerMode = useAppStore((s) => s.reader.readerMode);
@@ -666,12 +661,6 @@ const Reader = () => {
     <div
       className={"viewer" + (state.isNearEdge ? " quick-buttons-shown" : "")}
     >
-      {isElectron && currentBook.key && <ReaderAnnotationLayer key={currentBook.key}/>}
-      {isElectron && <nav className="reader-quick-rail" style={annotationPalette} aria-label={t("Reading tools")}>
-        <button title={t("Contents")} aria-label={t("Contents")} onClick={()=>updateState({isOpenLeftPanel:!state.isOpenLeftPanel})}>☷</button>
-        <button title={t("Current chapter annotations")} aria-label={t("Current chapter annotations")} onClick={()=>window.dispatchEvent(new Event(ANNOTATION_QUERY))}>✎</button>
-        <button title={t("Reading settings")} aria-label={t("Reading settings")} onClick={()=>updateState({isOpenRightPanel:!state.isOpenRightPanel})}>⚙</button>
-      </nav>}
       <Tooltip id="my-tooltip" style={{ zIndex: 25 }} />
       {isSeparateElectronWindow && (
         <div className="reader-window-drag-region" />
