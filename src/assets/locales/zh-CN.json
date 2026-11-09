@@ -1252,5 +1252,11 @@
   "No annotations in this chapter": "本章暂无批注",
   "Annotation details": "批注详情",
   "Delete annotation?": "删除此批注及其绑定位置？",
-  "Source preview": "单章原文预览"
+  "Source preview": "单章原文预览",
+  "Used by {{count}} annotations": "用于 {{count}} 条批注",
+  "Rename tag": "重命名标签",
+  "Merge tags": "合并标签",
+  "Delete tag": "删除标签",
+  "Merge tags used by {{count}} annotations?": "合并标签，将影响 {{count}} 条批注？",
+  "Remove this tag from {{count}} annotations?": "从 {{count}} 条批注中解除此标签？"
 }

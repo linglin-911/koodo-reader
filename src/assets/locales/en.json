@@ -1264,5 +1264,11 @@
   "No annotations in this chapter": "No annotations in this chapter",
   "Annotation details": "Annotation details",
   "Delete annotation?": "Delete annotation?",
-  "Source preview": "Source preview"
+  "Source preview": "Source preview",
+  "Used by {{count}} annotations": "Used by {{count}} annotations",
+  "Rename tag": "Rename tag",
+  "Merge tags": "Merge tags",
+  "Delete tag": "Delete tag",
+  "Merge tags used by {{count}} annotations?": "Merge tags used by {{count}} annotations?",
+  "Remove this tag from {{count}} annotations?": "Remove this tag from {{count}} annotations?"
 }
