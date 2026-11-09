@@ -6,6 +6,7 @@ import Reader from '/src/pages/reader/component.tsx';
 import { ConfigService } from '/src/assets/lib/kookit-extra-browser.min';
 import { useAppStore } from '/src/store/useAppStore.ts';
 import { getPageWidth } from '/src/utils/common.ts';
+import { AnnotationService } from '/src/utils/storage/annotationService.ts';
 import { changeLanguage } from '/src/i18n.tsx';
 import '/src/assets/styles/reset.css';
 import '/src/assets/styles/global.css';
@@ -14,14 +15,17 @@ import '/src/assets/styles/style.css';
 export async function run() {
   await changeLanguage('zhCN');
   const assert = (value: unknown, message: string) => { if (!value) throw Error(message); };
-  const wait = async (check: () => boolean, message: string) => {
+  const wait = async (check: () => boolean | Promise<boolean>, message: string) => {
     const until = Date.now() + 20000;
     while (Date.now() < until) {
-      if (check()) return;
+      if (await check()) return;
       await new Promise(resolve => setTimeout(resolve, 30));
     }
     throw Error(message);
   };
+  ConfigService.setReaderConfig('selectAction', 'highlight');
+  ConfigService.setListConfig('translation', 'popupOptionEnabled');
+  ConfigService.setListConfig('assistant', 'popupOptionOrder');
   ConfigService.setReaderConfig('readerMode', 'scroll');
   ConfigService.setReaderConfig('isOpenInMain', 'yes');
   ConfigService.setReaderConfig('isDisableAI', 'yes');
@@ -80,9 +84,50 @@ export async function run() {
   const dragPoint = nativePoint(0, 8);
   await window.electronAPI.invoke('reader-toolbar-drag', { x: dragPoint.x, y: dragPoint.y, endX: dragPoint.right });
   await wait(() => !!rendition().getDocument()!.getSelection()!.toString(), 'Single-press native drag selection stopped working');
-  rendition().getDocument()!.getSelection()!.removeAllRanges();
-  useAppStore.getState().handleOpenMenu(false);
+  await wait(() => useAppStore.getState().viewArea.menuMode === 'menu', 'Old auto-selection action bypassed the fixed menu');
+  const actions = document.querySelectorAll<HTMLButtonElement>('.menu-list button');
+  assert(actions.length === 2 && actions[0].getAttribute('aria-label') === '小批注' && actions[1].getAttribute('aria-label') === '复制', 'Selection menu is not limited to small annotation/copy');
+  assert(!document.querySelector('.popup-color-box, .menu-list .setting-option'), 'Removed style/customization menu returned');
+  await window.electronAPI.invoke('reader-toolbar-preview', 'selection');
+  const copiedText = rendition().getDocument()!.getSelection()!.toString();
+  actions[1].click();
+  assert(await window.electronAPI.invoke('reader-toolbar-clipboard') === copiedText, 'Copy action changed selected text');
   cases++;
+  const annotationDrag = nativePoint(10, 15);
+  await window.electronAPI.invoke('reader-toolbar-drag', { x: annotationDrag.x, y: annotationDrag.y, endX: annotationDrag.right });
+  await wait(() => useAppStore.getState().viewArea.menuMode === 'menu', 'Selection menu did not reopen');
+  document.querySelector<HTMLButtonElement>('.menu-list .note-option')!.click();
+  const body = () => document.querySelector<HTMLTextAreaElement>('.note-editor .editor-box');
+  await wait(() => !!body() && !body()!.disabled, 'Small annotation editor did not capture source');
+  const popup = document.querySelector<HTMLElement>('.small-annotation-popup')!;
+  const close = popup.querySelector<HTMLButtonElement>('.small-annotation-close')!;
+  const closeRect = close.getBoundingClientRect(), popupRect = popup.getBoundingClientRect();
+  assert(closeRect.top >= popupRect.top && closeRect.right <= popupRect.right && closeRect.left > popupRect.left + popupRect.width / 2, 'Close button is not inside the top-right of the white popup');
+  assert(!popup.querySelector('.popup-pin-handle,.popup-drag-handle,.color-option-container') && popup.querySelectorAll('.note-button-container button').length === 1, 'Removed editor features returned');
+  const confirm = () => popup.querySelector<HTMLButtonElement>('.small-annotation-confirm')!;
+  assert(confirm().textContent === '确认' && confirm().disabled, 'Confirm label/empty body validation mismatch');
+  const setBody = (value: string) => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(body()!, value);
+    body()!.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  setBody('small annotation from simplified popup');
+  await wait(() => !confirm().disabled, 'Confirm stayed disabled with a body');
+  await window.electronAPI.invoke('reader-toolbar-preview', 'note');
+  confirm().click();confirm().click();
+  await wait(async () => (await AnnotationService.list({ keyword: 'small annotation from simplified popup' })).records.length === 1, 'Confirm did not create exactly one entity');
+  await wait(() => !document.querySelector('.small-annotation-popup'), 'Confirm did not close popup');
+  cases++;
+  const freshDrag = nativePoint(19, 23);
+  await window.electronAPI.invoke('reader-toolbar-drag', { x: freshDrag.x, y: freshDrag.y, endX: freshDrag.right });
+  await wait(() => useAppStore.getState().viewArea.menuMode === 'menu', 'New source selection menu missing');
+  document.querySelector<HTMLButtonElement>('.menu-list .note-option')!.click();
+  await wait(() => !!body() && !body()!.disabled, 'New draft editor missing');
+  setBody('discarded small annotation draft');
+  document.querySelector<HTMLButtonElement>('.small-annotation-close')!.click();
+  await wait(() => !document.querySelector('.small-annotation-popup'), 'Close button did not dismiss draft');
+  assert((await AnnotationService.list({ keyword: 'discarded small annotation draft' })).records.length === 0, 'Close button saved an unwanted draft');
+  cases++;
+
   const scrollBefore = area.scrollTop;
   assert(getComputedStyle(area).scrollbarWidth === 'none' && getComputedStyle(area, '::-webkit-scrollbar').display === 'none', 'Reading scrollbar is still exposed');
   await window.electronAPI.invoke('reader-toolbar-wheel', { x: point.x, y: point.y });

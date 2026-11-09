@@ -16,7 +16,8 @@ const Background = ({ isPanelLayout = false }: BackgroundProps) => {
   const isNavLocked = isPanelLayout ? false : storedNavLocked;
   const storedSettingLocked = useAppStore((s) => s.reader.isSettingLocked);
   const isSettingLocked = isPanelLayout ? false : storedSettingLocked;
-  const isDockedRight = useAppStore((s) => s.reader.isDockedRight);
+  const storedDockedRight = useAppStore((s) => s.reader.isDockedRight);
+  const isDockedRight = isPanelLayout ? false : storedDockedRight;
   const backgroundColor = useAppStore((s) => s.reader.backgroundColor);
   const scale = useAppStore((s) => s.reader.scale);
   const isFitPage = useAppStore((s) => s.reader.isFitPage);

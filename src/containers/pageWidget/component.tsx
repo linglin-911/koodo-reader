@@ -38,7 +38,8 @@ const PageWidget = ({ isPanelLayout = false }: PageWidgetProps) => {
   const isNavLocked = isPanelLayout ? false : storedNavLocked;
   const storedSettingLocked = useAppStore((s) => s.reader.isSettingLocked);
   const isSettingLocked = isPanelLayout ? false : storedSettingLocked;
-  const isDockedRight = useAppStore((s) => s.reader.isDockedRight);
+  const storedDockedRight = useAppStore((s) => s.reader.isDockedRight);
+  const isDockedRight = isPanelLayout ? false : storedDockedRight;
   const backgroundColor = useAppStore((s) => s.reader.backgroundColor);
   const isHideHeader = useAppStore((s) => s.reader.isHideHeader);
   const isShowPageBorder = useAppStore((s) => s.reader.isShowPageBorder);

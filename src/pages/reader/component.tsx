@@ -22,7 +22,6 @@ import SettingDialog from "../../components/dialogs/settingDialog";
 import SpeechDialog from "../../components/dialogs/speechDialog";
 import KeepMounted from "../../components/keepMounted";
 import AnnotationDialog from "../../components/dialogs/annotationDialog";
-import PopupOptionDialog from "../../components/dialogs/popupOptionDialog";
 import {
   updateDiscordPresence,
   clearDiscordPresence,
@@ -61,9 +60,6 @@ const Reader = () => {
   const isAssistReadOpen = useAppStore((s) => s.reader.isAssistReadOpen);
   const isSpeechOpen = useAppStore((s) => s.reader.isSpeechOpen);
   const isAnnotationOpen = useAppStore((s) => s.reader.isAnnotationOpen);
-  const isOpenPopupOptionDialog = useAppStore(
-    (s) => s.backupPage.isOpenPopupOptionDialog
-  );
   const isSettingLocked = useAppStore((s) => s.reader.isSettingLocked);
   const isSettingOpen = useAppStore((s) => s.manager.isSettingOpen);
   const handleFetchBooks = useAppStore((s) => s.handleFetchBooks);
@@ -88,7 +84,6 @@ const Reader = () => {
     isAssistReadOpen,
     isSpeechOpen,
     isAnnotationOpen,
-    isOpenPopupOptionDialog,
     isSettingLocked,
     isSettingOpen,
     handleFetchBooks,
@@ -369,12 +364,6 @@ const Reader = () => {
           </div>
           {isAnnotationOpen && <AnnotationDialog />}
           <SupportDialog />
-          {isOpenPopupOptionDialog && (
-            <>
-              <PopupOptionDialog />
-              <div className="drag-background"></div>
-            </>
-          )}
         </div>
         <div
           id="reader-settings-panel"

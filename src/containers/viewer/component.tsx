@@ -104,7 +104,8 @@ const Viewer = (props: ViewerProps) => {
   const isNavLocked = props.isPanelLayout ? false : storedNavLocked;
   const storedSettingLocked = useAppStore((s) => s.reader.isSettingLocked);
   const isSettingLocked = props.isPanelLayout ? false : storedSettingLocked;
-  const isDockedRight = useAppStore((s) => s.reader.isDockedRight);
+  const storedDockedRight = useAppStore((s) => s.reader.isDockedRight);
+  const isDockedRight = props.isPanelLayout ? false : storedDockedRight;
   const isOpenMenu = useAppStore((s) => s.viewArea.isOpenMenu);
   const isAuthed = useAppStore((s) => s.manager.isAuthed);
   const readerMode = useAppStore((s) => s.reader.readerMode);
@@ -1058,11 +1059,6 @@ const Viewer = (props: ViewerProps) => {
         propsRef.current.isFitPage
       )
     );
-    // 刷新页面后，若 popupBox 处于固定右侧状态，自动恢复显示 popupAssist
-    if (propsRef.current.isDockedRight) {
-      propsRef.current.handleMenuMode("assistant");
-      propsRef.current.handleOpenMenu(true);
-    }
     propsRef.current.handleRenderBookFunc(handleRenderBook);
     const resizeHandler = throttle(() => {
       flushSync(() => {
@@ -1187,13 +1183,7 @@ const Viewer = (props: ViewerProps) => {
           } as any)}
         />
       ) : null}
-      {htmlBook &&
-      (isDockedRight ||
-        (isOpenMenu &&
-          (menuMode === "dict" ||
-            menuMode === "trans" ||
-            menuMode === "assistant" ||
-            menuMode === "note"))) ? (
+      {htmlBook && isOpenMenu && menuMode === "note" ? (
         <PopupBox
           {...({
             rendition: htmlBook.rendition,

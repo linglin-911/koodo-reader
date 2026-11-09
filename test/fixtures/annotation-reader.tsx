@@ -7,6 +7,7 @@ import { AnnotationService } from "/src/utils/storage/annotationService.ts";
 import { restoreAnnotations } from "/src/utils/reader/annotationUtil.ts";
 import { useAppStore } from "/src/store/useAppStore.ts";
 import PopupNote from "/src/components/popups/popupNote/component.tsx";
+import PopupBox from "/src/components/popups/popupBox/component.tsx";
 import AnnotationEditor from "/src/components/annotations/editor.tsx";
 import NoteList from "/src/containers/lists/noteList/component.tsx";
 import {MemoryRouter} from "react-router-dom";
@@ -66,11 +67,11 @@ export async function run() {
     // draft and creates no entity; retry and keyboard confirmation create once.
     useAppStore.getState().handleAnnotationTarget("");
     render(<PopupOption noteKey="" rect={new DOMRect()} cfiRange="" chapterDocIndex={0} chapter="Chapter 1"/>);
-    await wait(()=>!!host.querySelector('[data-tooltip-content="Take a note"]'),"Original note menu action missing");
-    (host.querySelector('[data-tooltip-content="Take a note"]') as HTMLElement).click();
+    await wait(()=>!!host.querySelector('[data-tooltip-content="Small annotation"]'),"Original note menu action missing");
+    (host.querySelector('[data-tooltip-content="Small annotation"]') as HTMLElement).click();
     render(<PopupNote isDockedRight={false} chapterDocIndex={0} chapter="Chapter 1"/>);
     await wait(()=>!!body()&&!body()!.disabled,"Original selection editor unavailable");
-    assert(!!host.querySelector(".note-editor .note-original-text")&&!!button("Copy quotes")&&!!button("Cancel")&&!!button("Confirm"),"Original editor shell/actions were replaced");
+    assert(!!host.querySelector(".note-editor .note-original-text")&&!button("Copy quotes")&&!button("Cancel")&&!!button("Confirm")&&!host.querySelector(".color-option-container"),"Simplified editor actions mismatch");
     await window.electronAPI.invoke("annotation-test-preview","native");
     set(body()!,"retryable atomic draft");
     await window.electronAPI.invoke("annotation-test-fail-create",true);button("Confirm").click();
@@ -85,13 +86,18 @@ export async function run() {
     assert((await AnnotationService.get(created.key))!.bindings.length===1,"Retry did not create exactly one binding");
     await wait(()=>!useAppStore.getState().viewArea.isOpenMenu,"Confirmation no longer closes original popup");cases++;
     useAppStore.getState().handleAnnotationTarget(created.key);
-    render(<PopupNote key="delete-created" isDockedRight={false} chapterDocIndex={0} chapter="Chapter 1"/>);
-    await wait(()=>body()?.value==="retryable atomic draft","Reopening created entity failed");button("Delete").click();
-    await wait(async()=>!(await AnnotationService.get(created.key)),"Original Delete did not remove the entity");cases++;
+    useAppStore.getState().handleMenuMode("note");useAppStore.getState().handleOpenMenu(true);
+    render(<PopupBox key="close-existing" rendition={rendition} rect={new DOMRect()} chapterDocIndex={0} chapter="Chapter 1"/>);
+    await wait(()=>body()?.value==="retryable atomic draft","Reopening created entity failed");
+    host.querySelector<HTMLButtonElement>(".small-annotation-close")!.click();
+    assert(!!(await AnnotationService.get(created.key)),"Closing the small-annotation popup deleted its entity");
+    await AnnotationService.delete((await AnnotationService.get(created.key))!);cases++;
     select(0,5);useAppStore.getState().handleAnnotationTarget("");
-    render(<PopupNote key="cancel-new" isDockedRight={false} chapterDocIndex={0} chapter="Chapter 1"/>);
-    await wait(()=>!!body()&&!body()!.disabled&&!!button("Cancel"),"Original Cancel action missing");set(body()!,"cancelled draft");button("Cancel").click();
-    assert((await AnnotationService.list({keyword:"cancelled draft"})).records.length===0,"Cancel wrote an entity");cases++;
+    useAppStore.getState().handleMenuMode("note");useAppStore.getState().handleOpenMenu(true);
+    render(<PopupBox key="close-new" rendition={rendition} rect={new DOMRect()} chapterDocIndex={0} chapter="Chapter 1"/>);
+    await wait(()=>!!body()&&!body()!.disabled&&!!host.querySelector(".small-annotation-close"),"Small annotation close action missing");
+    set(body()!,"cancelled draft");host.querySelector<HTMLButtonElement>(".small-annotation-close")!.click();
+    assert((await AnnotationService.list({keyword:"cancelled draft"})).records.length===0,"Closing draft wrote an entity");cases++;
     select(0,5);
     let small = await AnnotationService.save({ bookKey: book.key, kind: "small", title: "Small entity", notes: "small body", tag: ["small"] });
     small = await AnnotationService.bind(small.key, a);
@@ -112,6 +118,7 @@ export async function run() {
     cases++;
     render(<PopupNote isDockedRight={false} chapterDocIndex={0} chapter="Chapter 1"/>);
     await wait(() => !!body() && body()!.value === "small body", "Original note popup did not load entity body");
+    const beforeBodyEdit = small.bindings.map(binding=>({id:binding.id,style:binding.style,version:binding.version}));
     set(body()!, "annotation"); button("Confirm").click();
     await wait(async()=> (await AnnotationService.get(small.key))?.notes==="annotation","Literal drawing sentinel text was not saved");
     await wait(()=>useAppStore.getState().reader.noteKey==="","Original edit did not finish closing");
@@ -124,14 +131,15 @@ export async function run() {
     await wait(()=>useAppStore.getState().reader.noteKey==="","Second edit did not finish closing");
     small = (await AnnotationService.get(small.key))!;
     assert(small.bindings.length === 2, "Body editing rewrote positions");
+    assert(JSON.stringify(small.bindings.map(binding=>({id:binding.id,style:binding.style,version:binding.version})))===JSON.stringify(beforeBodyEdit),"Body editing rewrote binding styles or versions");
     cases++;
     await rendition.goToChapterDocIndex(1);
     select(0, 5);
-    // Exercise the original selection menu's new append action.
+    // The menu no longer exposes append. Retain its existing data/editor
+    // contract coverage directly, without adding another menu feature.
     render(<PopupOption noteKey="" rect={new DOMRect()} cfiRange="" chapterDocIndex={1} chapter="Chapter 2"/>);
-    await wait(() => !!host.querySelector('[data-tooltip-content="Add to small annotation"]'), "Append action missing from original selection menu");
-    (host.querySelector('[data-tooltip-content="Add to small annotation"]') as HTMLElement).click();
-    assert(useAppStore.getState().reader.annotationAppend, "Selection menu did not open append mode");
+    assert(!host.querySelector('[data-tooltip-content="Add to small annotation"]'),"Removed append entry reappeared");
+    useAppStore.getState().handleAnnotationTarget("","",true);
     render(<PopupNote isDockedRight={false} chapterDocIndex={1} chapter="Chapter 2"/>);
     await wait(() => !!host.querySelector('select[aria-label="Choose existing annotation"] option[value="' + small.key + '"]'), "Existing annotation chooser did not load");
     set(host.querySelector<HTMLSelectElement>('select[aria-label="Choose existing annotation"]')!, small.key);

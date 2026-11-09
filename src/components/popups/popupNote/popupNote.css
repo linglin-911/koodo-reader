@@ -1,132 +1,56 @@
 .note-editor {
-  width: calc(100% - 40px);
-  height: calc(100% - 140px);
-  padding: 20px;
-}
-.note-original-text {
-  border-left: solid 3px #109870;
-  padding-left: 10px;
-  margin-bottom: 20px;
-  margin-top: 5px;
-  line-height: 1.25;
-  text-align: left;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-  font-size: 15px;
-}
-.editor-box-parent {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
   width: 100%;
-  height: calc(100% - 15px);
+  height: 100%;
+  padding: 40px 20px 16px;
 }
-.editor-box {
-  border: none;
+.note-editor .note-original-text {
+  flex: 0 0 auto;
+  max-height: 56px;
+  border-left: 3px solid #109870;
+  padding-left: 10px;
+  line-height: 1.3;
+  font-size: 15px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.note-editor .editor-box-parent { flex: 1 1 0; min-height: 72px; }
+.note-editor .editor-box {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 12px;
+  border: 0;
+  border-radius: 8px;
   outline: none;
   resize: none;
+  overflow-y: auto;
+  background: rgb(16 152 112 / 5%);
+  color: inherit;
+  font: inherit;
   font-size: 15px;
-  width: calc(100% - 20px);
-  min-height: 120px;
-  line-height: 18px;
-  overflow-y: scroll;
-  background-color: rgba(16, 152, 112, 0.05);
-  border-radius: 7px;
-  padding: 10px;
+  line-height: 1.5;
 }
-
-.editor-box::placeholder {
-  font-size: 15px;
-  line-height: 15px;
-  opacity: 0.6;
-  position: relative;
-  top: 6px;
+.note-editor .editor-box:focus-visible { box-shadow: inset 0 0 0 1px rgb(36 123 114 / 35%); }
+.note-editor .note-tags { flex: 0 0 auto; width: 100%; overflow-x: auto; }
+.note-editor .note-button-container { display: flex; flex: 0 0 auto; justify-content: flex-end; }
+.note-editor .small-annotation-confirm {
+  min-width: 84px;
+  padding: 9px 24px;
+  border: 0;
+  border-radius: 999px;
+  background: #247b72;
+  color: white;
+  font: inherit;
+  font-size: 14px;
   font-weight: 500;
-}
-.editor-box::-ms-input-placeholder {
-  font-size: 15px;
-  line-height: 15px;
-  opacity: 0.6;
-  position: relative;
-  top: 6px;
-  font-weight: 500;
-}
-.editor-box::-moz-placeholder {
-  font-size: 15px;
-  line-height: 15px;
-  opacity: 0.6;
-  position: relative;
-  top: 6px;
-  font-weight: 500;
-}
-.note-button-container {
-  position: absolute;
-  bottom: 10px;
-  right: 10px;
-  max-width: 100%;
-  display: flex;
-  justify-content: space-between;
   cursor: pointer;
 }
-.confirm-button {
-  font-size: 15px;
-  line-height: 15px;
-  opacity: 1;
-  cursor: pointer;
-}
-.cancel-button {
-  font-size: 15px;
-  line-height: 15px;
-  opacity: 1;
-  cursor: pointer;
-  margin-right: 20px;
-}
-.note-tags-container {
-  overflow-x: auto;
-  overflow-y: hidden;
-  /* 默认隐藏滚动条 */
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
-}
-
-/* 隐藏 WebKit 浏览器的滚动条 */
-.note-tags-container::-webkit-scrollbar {
-  display: none;
-}
-
-/* 悬停时显示滚动条 */
-.note-tags-container:hover {
-  scrollbar-width: thin; /* Firefox */
-  -ms-overflow-style: auto; /* IE/Edge */
-}
-
-/* 悬停时显示 WebKit 浏览器的滚动条 */
-.note-tags-container:hover::-webkit-scrollbar {
-  display: block;
-  height: 8px;
-}
-
-.note-tags-container:hover::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 4px;
-}
-
-.note-tags-container:hover::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 4px;
-  height: 4px;
-}
-
-.note-tags-container:hover::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.5);
-}
-
-.note-binding-management { position:absolute;right:20px;top:0;font:inherit;font-size:12px;cursor:pointer; }
-
-/* These native action styles were previously supplied by the book-list route. */
-.note-button-container .book-manage-title {
-  font-size: 15px;
-  font-weight: 500;
-  padding: 6px 10px;
-  border-radius: 5px;
-}
+.note-editor .small-annotation-confirm:hover:not(:disabled) { background: #1b655e; }
+.note-editor .small-annotation-confirm:disabled { opacity: 0.45; cursor: default; }
+.note-editor .small-annotation-confirm:focus-visible { outline: 2px solid #247b72; outline-offset: 3px; }

@@ -1,23 +1,11 @@
-import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import "./popupMenu.css";
 import {
   getReaderWidth,
-  isFixedLayoutBook,
   isPaginatedBook,
 } from "../../../utils/common";
 import PopupOption from "../popupOption";
-import ColorOption from "../../colorOption";
 import { getIframeDoc } from "../../../utils/reader/docUtil";
-import {
-  ConfigService,
-  HighlightUtil,
-} from "../../../assets/lib/kookit-extra-browser.min";
-import {
-  getSelection,
-  getSelectionSentence,
-} from "../../../utils/reader/mouseEvent";
-import { createHighlight } from "../../../utils/reader/noteUtil";
 import { useAppStore } from "../../../store/useAppStore";
 
 export interface PopupMenuProps {
@@ -31,25 +19,18 @@ export interface PopupMenuProps {
 
 declare var window: any;
 
-const MENU_WIDTH = 252;
-const MENU_HEIGHT = 141;
-const highlightUtil: any = new HighlightUtil(ConfigService);
+const MENU_WIDTH = 96;
+const MENU_HEIGHT = 52;
 
 const PopupMenu = (props: PopupMenuProps) => {
   const currentBook = useAppStore((s) => s.book.currentBook);
   const isOpenMenu = useAppStore((s) => s.viewArea.isOpenMenu);
   const menuMode = useAppStore((s) => s.viewArea.menuMode);
   const readerMode = useAppStore((s) => s.reader.readerMode);
-  const highlight = useAppStore((s) => s.reader.highlight);
-  const htmlBook = useAppStore((s) => s.reader.htmlBook);
   const handleOpenMenu = useAppStore((s) => s.handleOpenMenu);
   const handleMenuMode = useAppStore((s) => s.handleMenuMode);
   const handleChangeDirection = useAppStore((s) => s.handleChangeDirection);
   const handleNoteKey = useAppStore((s) => s.handleNoteKey);
-  const handleOriginalText = useAppStore((s) => s.handleOriginalText);
-  const handleOriginalSentence = useAppStore((s) => s.handleOriginalSentence);
-  const handleFetchNotes = useAppStore((s) => s.handleFetchNotes);
-  const { t } = useTranslation();
   const [rect, setRect] = useState(props.rect);
   const prevRectRef = useRef(props.rect);
 
@@ -159,12 +140,8 @@ const PopupMenu = (props: PopupMenuProps) => {
       return;
     }
 
-    const selectAction = ConfigService.getReaderConfig("selectAction");
-    if (selectAction && selectAction !== "") {
-      handleSelectAction(selectAction, sel);
-      return;
-    }
-
+    // Selection always opens the fixed two-action menu. Old saved auto-actions
+    // must not launch removed highlighter/translation/speech functions.
     showMenu(menuRect);
     handleMenuMode("menu");
   };
@@ -177,98 +154,9 @@ const PopupMenu = (props: PopupMenuProps) => {
     }
   }, [props.rect]);
 
-  const handleDigest = async () => {
-    await createHighlight({
-      currentBook: currentBook,
-      htmlBook: htmlBook,
-      chapterDocIndex: props.chapterDocIndex,
-      chapter: props.chapter,
-      color: highlightUtil.formatHighlightValue(
-        useAppStore.getState().reader.highlight
-      ),
-      t: t,
-      onNoteClick: (event: Event) => {
-        const element=(event.target as Element).closest<HTMLElement>("[data-key]");
-    useAppStore.getState().handleAnnotationTarget(element?.dataset.noteKey||element?.dataset.key||"",element?.dataset.bindingId||"");
-        handleMenuMode("note");
-        handleOpenMenu(true);
-      },
-      onSuccess: () => {
-        handleOpenMenu(false);
-        handleFetchNotes();
-        handleMenuMode("");
-      },
-    });
-  };
-
-  const handleSelectAction = async (action: string, _sel: Selection) => {
-    const text = getSelection(currentBook);
-    if (!text) return;
-    if (
-      (action === "note" || action === "highlight") &&
-      isFixedLayoutBook(currentBook)
-    ) {
-      showMenu();
-      handleMenuMode("menu");
-      return;
-    }
-
-    switch (action) {
-      case "translation":
-        handleOriginalText(text);
-        handleMenuMode("trans");
-        handleOpenMenu(true);
-        break;
-      case "dict":
-        handleOriginalText(text);
-        handleOriginalSentence(
-          getSelectionSentence(currentBook)
-        );
-        handleMenuMode("dict");
-        handleOpenMenu(true);
-        break;
-      case "highlight":
-        await createHighlight({
-          currentBook: currentBook,
-          htmlBook: htmlBook,
-          chapterDocIndex: props.chapterDocIndex,
-          chapter: props.chapter,
-          color: highlightUtil.formatHighlightValue(highlight),
-          t: t,
-          onSuccess: () => {
-            handleOpenMenu(false);
-          },
-        });
-        break;
-      case "add-to-small":
-        useAppStore.getState().handleAnnotationTarget("","",true);
-        handleMenuMode("note");handleOpenMenu(true);break;
-      case "note":
-        handleMenuMode("note");
-        showMenu();
-        handleOpenMenu(true);
-        break;
-      case "speaker":
-        const msg = new SpeechSynthesisUtterance();
-        msg.text = text;
-        if (window.speechSynthesis && window.speechSynthesis.getVoices) {
-          msg.voice = window.speechSynthesis.getVoices()[0];
-          window.speechSynthesis.speak(msg);
-        }
-        break;
-      default:
-        showMenu();
-        handleMenuMode("menu");
-        break;
-    }
-  };
-
   const PopupProps = {
     chapterDocIndex: props.chapterDocIndex,
     chapter: props.chapter,
-  };
-  const ColorProps = {
-    handleDigest: handleDigest,
   };
   return (
     <div>
@@ -281,17 +169,6 @@ const PopupMenu = (props: PopupMenuProps) => {
           style={menuMode === "menu" ? {} : { display: "none" }}
         >
           <PopupOption {...(PopupProps as any)} />
-        </div>
-        <div
-          className="popup-color-box"
-          style={
-            menuMode === "menu" &&
-            !isFixedLayoutBook(currentBook)
-              ? {}
-              : { display: "none" }
-          }
-        >
-          <ColorOption {...(ColorProps as any)} />
         </div>
       </div>
     </div>

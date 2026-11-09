@@ -40,8 +40,6 @@ const DropdownList = (props: DropdownListProps) => {
     fontOptions: [],
     currentTextOrientationValue:
       ConfigService.getReaderConfig("textOrientation") || "",
-    currentSelectActionValue:
-      ConfigService.getReaderConfig("selectAction") || "",
     currentTxtParserValue:
       ConfigService.getObjectConfig(currentBook?.key, "bookRules", {})
         ?.defaultTxtParser || "",
@@ -152,12 +150,6 @@ const DropdownList = (props: DropdownListProps) => {
         handleTextOrientation(arr[0]);
 
         break;
-      case "selectAction":
-        updateState({
-          currentSelectActionValue: arr[0],
-        });
-        toast.success(t("Setup successful"));
-        return;
       case "txtParser": {
         updateState({ currentTxtParserValue: arr[0] });
         const rule = ConfigService.getObjectConfig(
@@ -221,9 +213,7 @@ const DropdownList = (props: DropdownListProps) => {
                               ? state.currentTextOrientationValue
                               : item.value === "fontFamily"
                                 ? state.currentFontFamilyValue
-                                : item.value === "selectAction"
-                                  ? state.currentSelectActionValue
-                                  : state.currentSubFontFamilyValue
+                                : state.currentSubFontFamilyValue
               }
               onChange={(event) => {
                 handleView(event, item.value);

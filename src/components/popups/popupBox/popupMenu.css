@@ -1,97 +1,46 @@
-.popup-box-container {
-  opacity: 1;
-  border-radius: 10px;
+.popup-box-container.small-annotation-popup {
   position: absolute;
-  width: 500px;
-  height: 320px;
   left: 50%;
   bottom: 0;
   transform: translateX(-50%);
+  width: 500px;
+  max-width: calc(100% - 32px);
+  height: 360px;
+  max-height: calc(100% - 40px);
+  border-radius: 12px 12px 0 0;
   z-index: 10;
-  border-bottom-left-radius: 0px;
-  border-bottom-right-radius: 0px;
+  overflow: hidden;
+  background: #fff;
+  color: #3d4343;
 }
-.popup-box-inner {
-  display: flow-root;
-}
-.popup-resize-handle {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 18px;
-  height: 18px;
-  cursor: nesw-resize;
-  z-index: 20;
-  background: transparent;
-}
-.popup-resize-handle::before {
-  content: "";
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 10px;
-  height: 10px;
-  border-top: 2.5px solid rgba(128, 128, 128, 0.6);
-  border-right: 2.5px solid rgba(128, 128, 128, 0.6);
-  border-radius: 0 6px 0 0;
-}
-.sidebar-icon {
-  cursor: pointer;
-  font-size: 18px;
-}
-.popup-drag-handle {
-  position: absolute;
-  top: 0;
-  right: 24px;
-  width: 20px;
-  height: 20px;
-  cursor: move !important;
-  z-index: 20;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  margin-top: 2px;
-}
-.popup-pin-handle {
-  position: absolute;
-  top: 0;
-  right: 24px;
-  width: 20px;
-  height: 20px;
-  cursor: pointer !important;
-  z-index: 20;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  margin-top: 2px;
-}
-@media screen and (max-width: 576px) {
-  .popup-box-container {
-    width: 90%;
-    left: 5%;
-  }
-}
-.delete-highlighter-container {
+.small-annotation-popup .popup-box-inner {
   position: relative;
+  width: 100%;
+  height: 100%;
 }
-
-.popup-close {
+.small-annotation-close {
   position: absolute;
-  top: -30px;
-  right: 70px;
-  cursor: pointer;
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  font-size: 12px;
+  top: 10px;
+  right: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: #62686b;
+  background: transparent;
+  font-size: 14px;
   cursor: pointer;
+}
+.small-annotation-close:hover { background: rgb(0 0 0 / 6%); }
+.small-annotation-close:focus-visible { outline: 2px solid #247b72; outline-offset: 1px; }
+
+.small-annotation-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  background: rgb(0 0 0 / 32%);
 }

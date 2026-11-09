@@ -1,5 +1,5 @@
 // Isolated real Reader smoke test; never opens the user's library or profile.
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, clipboard } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -41,6 +41,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('custom-database-command', () => []);
   ipcMain.handle('reader-toolbar-book', () => book);
+  ipcMain.handle('reader-toolbar-clipboard', () => clipboard.readText());
   ipcMain.handle('reader-toolbar-resize', (_event, width) => window.setContentSize(width, 850));
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
   ipcMain.handle('reader-toolbar-click', async (_event, { x, y, count }) => {
@@ -67,7 +68,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('reader-toolbar-preview', async (_event, kind) => {
     await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
-    const preview = path.join(temporary, kind === 'navigation' ? 'reader-navigation.png' : 'reader-settings.png');
+    const preview = path.join(temporary, ({ navigation: 'reader-navigation.png', settings: 'reader-settings.png', note: 'small-annotation.png', selection: 'selection-menu.png' })[kind] || 'reader-settings.png');
     fs.writeFileSync(preview, (await window.webContents.capturePage()).toPNG());
     return preview;
   });

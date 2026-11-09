@@ -7,8 +7,6 @@ import "./popupNote.css";
 import { isReadingRawPDF } from "../../../utils/common";
 import Note from "../../../models/Note";
 import NoteTag from "../../noteTag";
-import { Trans } from "react-i18next";
-import toast from "react-hot-toast";
 import { getIframeDoc } from "../../../utils/reader/docUtil";
 import {
   ConfigService,
@@ -16,8 +14,6 @@ import {
   NoteSyncManager,
 } from "../../../assets/lib/kookit-extra-browser.min";
 import DatabaseService from "../../../utils/storage/databaseService";
-import ColorOption from "../../colorOption";
-import copy from "copy-text-to-clipboard";
 import { useAppStore } from "../../../store/useAppStore";
 
 export interface PopupNoteProps {
@@ -35,7 +31,6 @@ const LegacyPopupNote = (props: PopupNoteProps) => {
   const htmlBook = useAppStore((s) => s.reader.htmlBook);
   const noteKey = useAppStore((s) => s.reader.noteKey);
   const handleNoteKey = useAppStore((s) => s.handleNoteKey);
-  const handleHighlight = useAppStore((s) => s.handleHighlight);
   const handleOpenMenu = useAppStore((s) => s.handleOpenMenu);
   const handleShowPopupNote = useAppStore((s) => s.handleShowPopupNote);
   const handleMenuMode = useAppStore((s) => s.handleMenuMode);
@@ -60,13 +55,6 @@ const LegacyPopupNote = (props: PopupNoteProps) => {
         if (textArea) {
           textArea.value = loadedNote.notes;
         }
-        let { styleType, color } = highlightUtil.getHighlightValue(
-          loadedNote.color || "background-#FEF3CD"
-        );
-        handleHighlight({
-          styleType,
-          color,
-        });
       } else {
         let docs = getIframeDoc(currentBook);
         let selectedText = "";
@@ -104,12 +92,11 @@ const LegacyPopupNote = (props: PopupNoteProps) => {
     let notes = (document.querySelector(".editor-box") as HTMLInputElement)
       .value;
 
+    if (!notes.trim()) return;
     if (noteKey) {
       let newNote = await DatabaseService.getRecord(noteKey, "notes");
       newNote.notes = notes;
       newNote.tag = tag;
-      newNote.color =
-        highlightUtil.formatHighlightValue(highlight) || newNote.color;
       DatabaseService.updateRecord(newNote, "notes").then(() => {
         handleOpenMenu(false);
         handleFetchNotes();
@@ -192,45 +179,13 @@ const LegacyPopupNote = (props: PopupNoteProps) => {
     }
   };
 
-  const handleUpdateHighlight = () => {};
-
-  const handleClose = () => {
-    if (noteKey) {
-      DatabaseService.deleteRecord(noteKey, "notes").then(() => {
-        toast.success(t("Deletion successful"));
-        handleMenuMode("");
-        handleFetchNotes();
-        handleNoteKey("");
-        if (htmlBook && htmlBook.rendition) {
-          htmlBook.rendition.removeOneNote(
-            noteKey,
-            props.chapterDocIndex
-          );
-        }
-
-        handleOpenMenu(false);
-        handleShowPopupNote(false);
-      });
-    } else {
-      handleOpenMenu(false);
-      handleMenuMode("");
-      handleNoteKey("");
-    }
-  };
-
-  const colorOptionProps = {
-    handleDigest: handleUpdateHighlight,
-    isEdit: true,
-    noteItem: note,
-  };
-
   return (
     <div className="note-editor">
       <div className="note-original-text">{text}</div>
       <div className="editor-box-parent">
         <textarea
           className="editor-box"
-          style={{ height: "calc(100% - 90px)" }}
+          aria-label={t("Annotation body")}
           onKeyDown={(event) => {
             if (
               event.key === "Enter" &&
@@ -243,16 +198,7 @@ const LegacyPopupNote = (props: PopupNoteProps) => {
           }}
         />
       </div>
-      <ColorOption {...(colorOptionProps as any)} />
-      <div
-        className="note-tags"
-        style={{
-          position: "absolute",
-          bottom: "35px",
-          height: "40px",
-          width: "calc(100% - 40px)",
-        }}
-      >
+      <div className="note-tags">
         <NoteTag
           {...({
             handleTag: handleTag,
@@ -262,32 +208,9 @@ const LegacyPopupNote = (props: PopupNoteProps) => {
       </div>
 
       <div className="note-button-container">
-        <span
-          className="book-manage-title"
-          onClick={() => {
-            copy(text);
-            toast.success(t("Copying successful"));
-          }}
-        >
-          <Trans>Copy quotes</Trans>
-        </span>
-        <span
-          className="book-manage-title"
-          onClick={() => {
-            handleClose();
-          }}
-        >
-          {noteKey ? <Trans>Delete</Trans> : <Trans>Cancel</Trans>}
-        </span>
-        <span
-          className="book-manage-title"
-          onClick={() => {
-            createNote();
-          }}
-        >
-          <Trans>Confirm</Trans>
-          <span> (CTRL + ↵)</span>
-        </span>
+        <button type="button" className="small-annotation-confirm" onClick={() => void createNote()}>
+          {t("Confirm")}
+        </button>
       </div>
     </div>
   );

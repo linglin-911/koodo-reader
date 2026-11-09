@@ -152,35 +152,6 @@ export const dropdownList = [
     isPDF: true,
   },
   {
-    title: "Action after selecting text",
-    group: "more",
-    value: "selectAction",
-    option: [
-      { label: "Default", value: "" },
-      {
-        label: "Translate",
-        value: "translation",
-      },
-      {
-        label: "Dictionary",
-        value: "dict",
-      },
-      {
-        label: "Highlight",
-        value: "highlight",
-      },
-      {
-        label: "Take a note",
-        value: "note",
-      },
-      {
-        label: "Speak the text",
-        value: "speaker",
-      },
-    ],
-    isPDF: true,
-  },
-  {
     title: "Full text translation",
     group: "more",
     value: "fullTranslationMode",

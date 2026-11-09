@@ -71,8 +71,8 @@ export async function run(){
   check(true,"original note popup edits body without rewriting bindings");
   useAppStore.getState().handleAnnotationTarget("");select(0,0,2);
   render(<PopupOption noteKey="" rect={new DOMRect()} cfiRange="" chapterDocIndex={0} chapter="Chapter 1"/>);
-  await wait(()=>!!host.querySelector('[data-tooltip-content="Take a note"]'),"original selection menu missing");
-  (host.querySelector('[data-tooltip-content="Take a note"]') as HTMLElement).click();
+  await wait(()=>!!host.querySelector('[data-tooltip-content="Small annotation"]'),"original selection menu missing");
+  (host.querySelector('[data-tooltip-content="Small annotation"]') as HTMLElement).click();
   render(<PopupNote key="new" isDockedRight={false} chapterDocIndex={0} chapter="Chapter 1"/>);
   await wait(()=>!!text()&&!text()!.disabled,"original new-note popup unavailable");set(text()!,"created from original window menu");button("Confirm").click();
   await wait(async()=>(await AnnotationService.list({keyword:"created from original window menu"})).records.length===1,"new menu note not created");
